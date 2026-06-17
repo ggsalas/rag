@@ -1,21 +1,29 @@
 import { useParams } from 'react-router'
+import { useSearch } from '@/hooks/useSearch'
+import { useAppStore } from '@/store/app.store'
+import { SearchBar } from '@/components/search/SearchBar'
+import { ResultList } from '@/components/search/ResultList'
 
 export function SearchPage() {
   const { libraryId } = useParams<{ libraryId: string }>()
+  const modelStatus = useAppStore((s) => s.modelStatus)
+  const { results, isSearching, error, hasSearched, search } = useSearch(libraryId!)
 
   return (
     <div>
-      <h2 className="mb-4 text-lg font-semibold">Search</h2>
-      <input
-        type="text"
-        placeholder="Search your documents..."
-        className="w-full rounded-lg border border-surface-light bg-surface px-4 py-3 text-white placeholder-slate-500 focus:border-primary focus:outline-none"
+      <SearchBar
+        onSearch={search}
+        isSearching={isSearching}
+        modelStatus={modelStatus}
       />
-      <div className="mt-8 text-center text-slate-400">
-        <p>Enter a query to search documents in this library.</p>
-        <p className="mt-2 text-xs text-slate-500">
-          Library ID: {libraryId}
-        </p>
+
+      <div className="mt-6">
+        <ResultList
+          results={results}
+          isSearching={isSearching}
+          hasSearched={hasSearched}
+          error={error}
+        />
       </div>
     </div>
   )

@@ -64,17 +64,21 @@ export async function searchByVector(
     vector: { value: embedding, property: 'embedding' },
     limit: topK ?? DEFAULT_TOP_K,
     includeVectors: false,
+    similarity: 0.0,
   })
 
-  return results.hits.map((hit) => ({
-    chunkId: hit.document.chunkId as string,
-    documentId: hit.document.documentId as string,
-    documentName: hit.document.documentName as string,
-    text: hit.document.text as string,
-    score: hit.score,
-    page: hit.document.page as number || undefined,
-    chunkIndex: hit.document.chunkIndex as number,
-  }))
+  return results.hits.map((hit) => {
+    const page = hit.document.page as number
+    return {
+      chunkId: hit.document.chunkId as string,
+      documentId: hit.document.documentId as string,
+      documentName: hit.document.documentName as string,
+      text: hit.document.text as string,
+      score: hit.score,
+      page: page === 0 ? undefined : page,
+      chunkIndex: hit.document.chunkIndex as number,
+    }
+  })
 }
 
 export async function removeByDocumentId(libraryId: string, documentId: string): Promise<void> {
