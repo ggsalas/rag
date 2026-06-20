@@ -1,28 +1,38 @@
-import { useParams } from 'react-router'
-import { useSearch } from '@/hooks/useSearch'
+import { useOutletContext } from 'react-router'
 import { useAppStore } from '@/store/app.store'
 import { SearchBar } from '@/components/search/SearchBar'
 import { ResultList } from '@/components/search/ResultList'
+import type { SearchResult } from '@/types/search'
+
+interface SearchContext {
+  searchQuery: string
+  searchResults: SearchResult[]
+  isSearching: boolean
+  searchError: string | null
+  hasSearched: boolean
+  performSearch: (query: string) => Promise<void>
+  clearSearch: () => void
+}
 
 export function SearchPage() {
-  const { libraryId } = useParams<{ libraryId: string }>()
+  const { searchResults, isSearching, searchError, hasSearched, performSearch } = 
+    useOutletContext<SearchContext>()
   const modelStatus = useAppStore((s) => s.modelStatus)
-  const { results, isSearching, error, hasSearched, search } = useSearch(libraryId!)
 
   return (
     <div>
       <SearchBar
-        onSearch={search}
+        onSearch={performSearch}
         isSearching={isSearching}
         modelStatus={modelStatus}
       />
 
       <div className="mt-6">
         <ResultList
-          results={results}
+          results={searchResults}
           isSearching={isSearching}
           hasSearched={hasSearched}
-          error={error}
+          error={searchError}
         />
       </div>
     </div>

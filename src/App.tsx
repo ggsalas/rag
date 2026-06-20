@@ -5,6 +5,7 @@ import { LibrariesPage } from '@/routes/libraries'
 import { LibraryLayout } from '@/routes/library-layout'
 import { DocumentsPage } from '@/routes/documents'
 import { SearchPage } from '@/routes/search'
+import { DocumentViewerPage } from '@/routes/document-viewer'
 import { cleanupInterruptedDocuments } from '@/services/document.service'
 import { useBeforeUnload } from '@/hooks/useBeforeUnload'
 import { useProcessingDocuments } from '@/hooks/useProcessingDocuments'
@@ -33,6 +34,10 @@ const router = createBrowserRouter([
           {
             path: 'documents',
             element: <DocumentsPage />
+          },
+          {
+            path: 'documents/:documentId',
+            element: <DocumentViewerPage />
           },
           {
             path: 'search',

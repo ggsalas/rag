@@ -1,6 +1,7 @@
 import type { DocumentMeta } from "@/types/document";
 import { formatFileSize, formatDate } from "@/lib/utils";
 import { Button } from "@/components/ui/Button";
+import { useParams, Link } from "react-router";
 
 interface DocumentItemProps {
   document: DocumentMeta;
@@ -22,9 +23,11 @@ export function DocumentItem({
   onConfirmDelete,
   onDelete,
 }: DocumentItemProps) {
+  const { libraryId } = useParams<{ libraryId: string }>()
   const isProcessing = PROCESSING_STATUSES.includes(document.status);
   const progress = document.processingProgress ?? 0;
   const hasError = document.status === "error";
+  const canView = document.status === "indexed";
 
   const handleDelete = async () => {
     await onDelete(document.id);
@@ -62,28 +65,37 @@ export function DocumentItem({
           {formatDate(document.createdAt)}
         </td>
         <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-          {confirmDelete === document.id ? (
-            <div className="flex gap-2 justify-end">
+          <div className="flex gap-2 justify-end">
+            {canView && (
+              <Link to={`/libraries/${libraryId}/documents/${document.id}`}>
+                <Button variant="secondary" size="sm">
+                  View
+                </Button>
+              </Link>
+            )}
+            {confirmDelete === document.id ? (
+              <>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => onConfirmDelete(null)}
+                >
+                  Cancel
+                </Button>
+                <Button variant="danger" size="sm" onClick={handleDelete}>
+                  Confirm
+                </Button>
+              </>
+            ) : (
               <Button
-                variant="secondary"
+                variant="danger"
                 size="sm"
-                onClick={() => onConfirmDelete(null)}
+                onClick={() => onConfirmDelete(document.id)}
               >
-                Cancel
+                Delete
               </Button>
-              <Button variant="danger" size="sm" onClick={handleDelete}>
-                Confirm
-              </Button>
-            </div>
-          ) : (
-            <Button
-              variant="danger"
-              size="sm"
-              onClick={() => onConfirmDelete(document.id)}
-            >
-              Delete
-            </Button>
-          )}
+            )}
+          </div>
         </td>
       </tr>
       {isProcessing && (

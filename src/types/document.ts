@@ -24,3 +24,10 @@ export type Chunk = {
   embedding: number[]
   page?: number
 }
+
+export type DocumentContent = {
+  documentId: string
+  libraryId: string
+  text: string
+  pages?: string[]
+}

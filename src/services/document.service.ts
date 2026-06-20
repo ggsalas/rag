@@ -1,6 +1,6 @@
 import { db } from './db'
 import { generateId } from '@/lib/utils'
-import type { DocumentMeta, DocumentStatus } from '@/types/document'
+import type { DocumentMeta, DocumentStatus, DocumentContent } from '@/types/document'
 import { removeByDocumentId } from '@/services/embedding/vector-store'
 
 export async function createDocument(
@@ -58,12 +58,15 @@ export async function deleteDocument(id: string): Promise<void> {
   const chunks = await db.chunks.where('documentId').equals(id).toArray()
   const chunkCount = chunks.length
 
-  await db.transaction('rw', db.documents, db.libraries, db.chunks, async () => {
+  await db.transaction('rw', db.documents, db.libraries, db.chunks, db.documentContents, async () => {
     // Delete document
     await db.documents.delete(id)
     
     // Delete all associated chunks
     await db.chunks.where('documentId').equals(id).delete()
+    
+    // Delete document content
+    await db.documentContents.delete(id)
     
     // Update library counts
     const library = await db.libraries.get(document.libraryId)
@@ -84,16 +87,18 @@ export async function deleteDocument(id: string): Promise<void> {
  * Clean up documents that were interrupted during processing.
  * This happens when the browser is refreshed or closed while documents are being processed.
  * 
- * After a page refresh, all Web Workers are terminated, so any document in a processing
- * state (pending, parsing, chunking, embedding) is guaranteed to be stuck and will never
- * complete. This function deletes these interrupted documents along with any partial chunks.
+ * After a page refresh, all Web Workers are terminated, so any document in 'pending' or 'parsing'
+ * state (before document content is saved) is guaranteed to be stuck and will never complete.
+ * 
+ * Documents in 'chunking' or 'embedding' state have their full text saved and could potentially
+ * be re-processed, so they are not deleted by this cleanup.
  * 
  * @returns The number of interrupted documents deleted
  */
 export async function cleanupInterruptedDocuments(): Promise<number> {
   const interruptedDocs = await db.documents
     .filter((doc) =>
-      ['pending', 'parsing', 'chunking', 'embedding'].includes(doc.status)
+      ['pending', 'parsing'].includes(doc.status)
     )
     .toArray()
 
@@ -117,4 +122,12 @@ function inferDocumentType(mimeType: string, fileName: string): 'pdf' | 'docx' |
   }
   if (fileName.endsWith('.md')) return 'md'
   return 'txt'
+}
+
+export async function saveDocumentContent(content: DocumentContent): Promise<void> {
+  await db.documentContents.put(content)
+}
+
+export async function getDocumentContent(documentId: string): Promise<DocumentContent | undefined> {
+  return db.documentContents.get(documentId)
 }

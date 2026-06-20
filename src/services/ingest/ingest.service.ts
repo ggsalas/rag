@@ -7,6 +7,7 @@ import { db } from "@/services/db";
 import {
   updateDocumentStatus,
   createDocument,
+  saveDocumentContent,
 } from "@/services/document.service";
 import type { Chunk, DocumentMeta } from "@/types/document";
 import { enqueue, waitForQueue } from "./ingest-queue";
@@ -48,6 +49,14 @@ async function processDocument(
         docMeta.id,
         mapRange(current, total, PROGRESS.PARSING),
       );
+    });
+
+    // Save document content
+    await saveDocumentContent({
+      documentId: docMeta.id,
+      libraryId,
+      text: parseResult.text,
+      pages: parseResult.pages,
     });
 
     await updateDocumentStatus(docMeta.id, "chunking");

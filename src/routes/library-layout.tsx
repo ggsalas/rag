@@ -1,12 +1,90 @@
-import { useEffect } from 'react'
-import { Outlet, NavLink, useParams } from 'react-router'
+import { useEffect, useState, useCallback } from 'react'
+import { Outlet, NavLink, useParams, useNavigate, useLocation } from 'react-router'
 import { useLibrary } from '@/hooks/useLibrary'
 import { hasIndex, rebuildIndex } from '@/services/embedding/vector-store'
+import { search as searchService } from '@/services/search/search.service'
 import { db } from '@/services/db'
+import type { SearchResult } from '@/types/search'
+
+interface OpenDocument {
+  id: string
+  name: string
+}
 
 export function LibraryLayout() {
-  const { libraryId } = useParams<{ libraryId: string }>()
+  const { libraryId, documentId } = useParams<{ libraryId: string; documentId: string }>()
   const { library, loading } = useLibrary(libraryId!)
+  const navigate = useNavigate()
+  const location = useLocation()
+  
+  const [openDocuments, setOpenDocuments] = useState<OpenDocument[]>([])
+  const [searchQuery, setSearchQuery] = useState("")
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([])
+  const [isSearching, setIsSearching] = useState(false)
+  const [searchError, setSearchError] = useState<string | null>(null)
+  const [hasSearched, setHasSearched] = useState(false)
+
+  // Track open document tabs
+  useEffect(() => {
+    if (!documentId) return
+    
+    async function addDocumentTab() {
+      const alreadyOpen = openDocuments.some((d) => d.id === documentId)
+      if (alreadyOpen) return
+      
+      const doc = await db.documents.get(documentId!)
+      if (doc) {
+        setOpenDocuments((prev) => [...prev, { id: doc.id, name: doc.name }])
+      }
+    }
+    
+    addDocumentTab()
+  }, [documentId])
+
+  const closeDocumentTab = useCallback((docId: string) => {
+    setOpenDocuments((prev) => prev.filter((d) => d.id !== docId))
+    // If closing the currently viewed document, navigate to documents list
+    if (documentId === docId) {
+      navigate(`/libraries/${libraryId}/documents`)
+    }
+  }, [documentId, libraryId, navigate])
+
+  const performSearch = useCallback(
+    async (query: string) => {
+      const trimmed = query.trim()
+      setSearchQuery(query)
+
+      if (!trimmed) {
+        setSearchResults([])
+        setSearchError(null)
+        setHasSearched(false)
+        return
+      }
+
+      setIsSearching(true)
+      setSearchError(null)
+
+      try {
+        const results = await searchService(trimmed, libraryId!)
+        setSearchResults(results)
+        setHasSearched(true)
+      } catch (err) {
+        setSearchError(err instanceof Error ? err.message : "Search failed")
+        setSearchResults([])
+        setHasSearched(true)
+      } finally {
+        setIsSearching(false)
+      }
+    },
+    [libraryId]
+  )
+
+  const clearSearch = useCallback(() => {
+    setSearchQuery("")
+    setSearchResults([])
+    setSearchError(null)
+    setHasSearched(false)
+  }, [])
 
   // Rehydrate Orama index if not in memory
   useEffect(() => {
@@ -20,17 +98,22 @@ export function LibraryLayout() {
     hydrateIndex()
   }, [libraryId])
 
+  const isDocumentActive = (docId: string) => {
+    return location.pathname.includes(`/documents/${docId}`)
+  }
+
   return (
     <div>
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-gray-900 mb-4">
           {loading ? 'Loading...' : library?.name || 'Library'}
         </h1>
-        <nav className="flex gap-4 border-b border-gray-200 pb-3">
+        <nav className="flex gap-1 border-b border-gray-200 overflow-x-auto">
           <NavLink
             to={`/libraries/${libraryId}/documents`}
+            end
             className={({ isActive }) =>
-              `pb-2 text-sm font-medium ${
+              `pb-2 px-3 text-sm font-medium whitespace-nowrap ${
                 isActive
                   ? 'border-b-2 border-blue-600 text-blue-600'
                   : 'text-gray-500 hover:text-gray-900'
@@ -42,7 +125,7 @@ export function LibraryLayout() {
           <NavLink
             to={`/libraries/${libraryId}/search`}
             className={({ isActive }) =>
-              `pb-2 text-sm font-medium ${
+              `pb-2 px-3 text-sm font-medium whitespace-nowrap ${
                 isActive
                   ? 'border-b-2 border-blue-600 text-blue-600'
                   : 'text-gray-500 hover:text-gray-900'
@@ -51,9 +134,43 @@ export function LibraryLayout() {
           >
             Search
           </NavLink>
+          {openDocuments.map((doc) => (
+            <div
+              key={doc.id}
+              className={`flex items-center gap-1 pb-2 px-3 text-sm font-medium whitespace-nowrap border-b-2 ${
+                isDocumentActive(doc.id)
+                  ? 'border-blue-600 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-900'
+              }`}
+            >
+              <NavLink
+                to={`/libraries/${libraryId}/documents/${doc.id}`}
+                className="max-w-32 truncate"
+              >
+                {doc.name}
+              </NavLink>
+              <button
+                onClick={(e) => {
+                  e.preventDefault()
+                  closeDocumentTab(doc.id)
+                }}
+                className="ml-1 text-gray-400 hover:text-gray-700 text-xs leading-none"
+              >
+                ×
+              </button>
+            </div>
+          ))}
         </nav>
       </div>
-      <Outlet />
+      <Outlet context={{ 
+        searchQuery, 
+        searchResults, 
+        isSearching, 
+        searchError, 
+        hasSearched, 
+        performSearch, 
+        clearSearch 
+      }} />
     </div>
   )
 }

@@ -1,5 +1,6 @@
 import type { SearchResult } from '@/types/search'
 import { ScoreBadge } from './ScoreBadge'
+import { Link, useParams } from 'react-router'
 
 interface ResultCardProps {
   result: SearchResult
@@ -7,6 +8,8 @@ interface ResultCardProps {
 }
 
 export function ResultCard({ result, rank }: ResultCardProps) {
+  const { libraryId } = useParams<{ libraryId: string }>()
+  
   return (
     <div className="bg-white rounded-lg border border-gray-200 p-4 hover:shadow-md transition-shadow">
       <div className="flex items-start justify-between gap-3 mb-2">
@@ -32,9 +35,16 @@ export function ResultCard({ result, rank }: ResultCardProps) {
         </p>
       )}
 
-      <p className="text-sm text-gray-700 leading-relaxed line-clamp-4">
+      <p className="text-sm text-gray-700 leading-relaxed line-clamp-4 mb-3">
         {result.text}
       </p>
+
+      <Link
+        to={`/libraries/${libraryId}/documents/${result.documentId}?chunk=${result.chunkIndex}`}
+        className="text-xs text-blue-600 hover:text-blue-800 font-medium"
+      >
+        View in context →
+      </Link>
     </div>
   )
 }
