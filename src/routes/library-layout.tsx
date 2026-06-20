@@ -29,12 +29,13 @@ export function LibraryLayout() {
     if (!documentId) return
     
     async function addDocumentTab() {
-      const alreadyOpen = openDocuments.some((d) => d.id === documentId)
-      if (alreadyOpen) return
-      
       const doc = await db.documents.get(documentId!)
       if (doc) {
-        setOpenDocuments((prev) => [...prev, { id: doc.id, name: doc.name }])
+        setOpenDocuments((prev) => {
+          const alreadyOpen = prev.some((d) => d.id === documentId)
+          if (alreadyOpen) return prev
+          return [...prev, { id: doc.id, name: doc.name }]
+        })
       }
     }
     
