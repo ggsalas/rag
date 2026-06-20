@@ -13,13 +13,18 @@ export interface ParseResult {
   pages?: string[] // only for PDF
 }
 
+export type ParseProgressCallback = (current: number, total: number) => void | Promise<void>
+
 export interface ParserWorkerAPI {
-  parsePdf(buffer: ArrayBuffer): Promise<ParseResult>
+  parsePdf(buffer: ArrayBuffer, onProgress?: ParseProgressCallback): Promise<ParseResult>
   parseDocx(buffer: ArrayBuffer): Promise<ParseResult>
   parseText(text: string): Promise<ParseResult>
 }
 
-async function parsePdf(buffer: ArrayBuffer): Promise<ParseResult> {
+async function parsePdf(
+  buffer: ArrayBuffer,
+  onProgress?: ParseProgressCallback
+): Promise<ParseResult> {
   const doc = await getDocument({ data: buffer }).promise
   const pages: string[] = []
 
@@ -35,6 +40,7 @@ async function parsePdf(buffer: ArrayBuffer): Promise<ParseResult> {
       })
       .join(' ')
     pages.push(text)
+    await onProgress?.(i, doc.numPages)
   }
 
   return {

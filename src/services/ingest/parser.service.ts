@@ -1,12 +1,16 @@
+import { proxy } from 'comlink'
 import { getParserWorker } from '@/workers/worker-api'
-import type { ParseResult } from '@/workers/parser.worker'
+import type { ParseResult, ParseProgressCallback } from '@/workers/parser.worker'
 
-export async function parseFile(file: File): Promise<ParseResult> {
+export async function parseFile(
+  file: File,
+  onProgress?: ParseProgressCallback
+): Promise<ParseResult> {
   const worker = getParserWorker()
 
   if (file.name.endsWith('.pdf') || file.type === 'application/pdf') {
     const buffer = await file.arrayBuffer()
-    return worker.parsePdf(buffer)
+    return worker.parsePdf(buffer, onProgress ? proxy(onProgress) : undefined)
   }
 
   if (

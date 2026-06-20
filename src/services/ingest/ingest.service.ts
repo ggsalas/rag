@@ -1,41 +1,76 @@
-import { generateId } from '@/lib/utils'
-import { parseFile } from './parser.service'
-import { chunkText, chunkTextWithPages } from './chunking.service'
-import { embedBatch } from '@/services/embedding/embedding.service'
-import { insertChunks } from '@/services/embedding/vector-store'
-import { db } from '@/services/db'
-import { updateDocumentStatus, createDocument } from '@/services/document.service'
-import type { Chunk, DocumentMeta } from '@/types/document'
-import { useAppStore } from '@/store/app.store'
+import { generateId } from "@/lib/utils";
+import { parseFile } from "./parser.service";
+import { chunkText, chunkTextWithPages } from "./chunking.service";
+import { embedBatch } from "@/services/embedding/embedding.service";
+import { insertChunks } from "@/services/embedding/vector-store";
+import { db } from "@/services/db";
+import {
+  updateDocumentStatus,
+  createDocument,
+} from "@/services/document.service";
+import type { Chunk, DocumentMeta } from "@/types/document";
+import { enqueue, waitForQueue } from "./ingest-queue";
+
+const PROGRESS = {
+  PARSING: [0, 10] as const,
+  CHUNKING: [10, 15] as const,
+  EMBEDDING: [15, 90] as const,
+  INDEXING: [90, 100] as const,
+};
+
+function mapRange(
+  value: number,
+  total: number,
+  range: readonly [number, number],
+): number {
+  if (total <= 0) return range[1];
+  return Math.round(range[0] + (value / total) * (range[1] - range[0]));
+}
+
+async function updateProgress(documentId: string, progress: number): Promise<void> {
+  await db.documents.update(documentId, { 
+    processingProgress: progress,
+    updatedAt: Date.now()
+  });
+}
 
 async function processDocument(
   docMeta: DocumentMeta,
   file: File,
-  libraryId: string
+  libraryId: string,
 ): Promise<void> {
-  const store = useAppStore.getState()
-
   try {
-    await updateDocumentStatus(docMeta.id, 'parsing')
-    store.updateProgress(docMeta.id, 10)
-    const parseResult = await parseFile(file)
+    await updateDocumentStatus(docMeta.id, "parsing");
+    await updateProgress(docMeta.id, PROGRESS.PARSING[0]);
 
-    await updateDocumentStatus(docMeta.id, 'chunking')
-    store.updateProgress(docMeta.id, 30)
+    const parseResult = await parseFile(file, async (current, total) => {
+      await updateProgress(
+        docMeta.id,
+        mapRange(current, total, PROGRESS.PARSING),
+      );
+    });
+
+    await updateDocumentStatus(docMeta.id, "chunking");
+    await updateProgress(docMeta.id, PROGRESS.CHUNKING[0]);
 
     const chunkDataList = parseResult.pages
       ? chunkTextWithPages(parseResult.pages)
-      : chunkText(parseResult.text)
+      : chunkText(parseResult.text);
 
     if (chunkDataList.length === 0) {
-      throw new Error('No text could be extracted from document')
+      throw new Error("No text could be extracted from document");
     }
 
-    await updateDocumentStatus(docMeta.id, 'embedding')
-    store.updateProgress(docMeta.id, 50)
+    await updateDocumentStatus(docMeta.id, "embedding");
+    await updateProgress(docMeta.id, PROGRESS.EMBEDDING[0]);
 
-    const texts = chunkDataList.map((c) => c.text)
-    const embeddings = await embedBatch(texts)
+    const texts = chunkDataList.map((c) => c.text);
+    const embeddings = await embedBatch(texts, async (current, total) => {
+      await updateProgress(
+        docMeta.id,
+        mapRange(current, total, PROGRESS.EMBEDDING),
+      );
+    });
 
     const chunks: Chunk[] = chunkDataList.map((data, i) => ({
       id: generateId(),
@@ -46,47 +81,52 @@ async function processDocument(
       text: data.text,
       embedding: embeddings[i]!,
       page: data.page,
-    }))
+    }));
 
-    store.updateProgress(docMeta.id, 80)
-    await db.chunks.bulkAdd(chunks)
+    await updateProgress(docMeta.id, PROGRESS.INDEXING[0]);
+    await db.chunks.bulkAdd(chunks);
 
-    await insertChunks(libraryId, chunks)
+    await insertChunks(libraryId, chunks);
 
-    await db.documents.update(docMeta.id, { chunkCount: chunks.length })
-    await db.libraries.where('id').equals(libraryId).modify((lib) => {
-      lib.chunkCount = (lib.chunkCount || 0) + chunks.length
-    })
+    await db.documents.update(docMeta.id, { 
+      chunkCount: chunks.length, 
+      processingProgress: undefined 
+    });
+    await db.libraries
+      .where("id")
+      .equals(libraryId)
+      .modify((lib) => {
+        lib.chunkCount = (lib.chunkCount || 0) + chunks.length;
+      });
 
-    await updateDocumentStatus(docMeta.id, 'indexed')
-    store.updateProgress(docMeta.id, 100)
+    await updateDocumentStatus(docMeta.id, "indexed");
   } catch (error) {
-    const errMsg = error instanceof Error ? error.message : 'Unknown error'
-    await db.documents.update(docMeta.id, { status: 'error', error: errMsg })
+    const errMsg = error instanceof Error ? error.message : "Unknown error";
+    await db.documents.update(docMeta.id, { 
+      status: "error", 
+      error: errMsg,
+      processingProgress: undefined 
+    });
   }
 }
 
-export async function ingestDocuments(files: File[], libraryId: string): Promise<void> {
-  const store = useAppStore.getState()
-
+export async function ingestDocuments(
+  files: File[],
+  libraryId: string,
+): Promise<void> {
   const docMetas = await Promise.all(
     files.map((file) =>
       createDocument(libraryId, {
         name: file.name,
         size: file.size,
         type: file.type,
-      })
-    )
-  )
-
-  store.addBatchToQueue(
-    docMetas.map((doc) => ({ documentId: doc.id, libraryId })),
-    files.length
-  )
+      }),
+    ),
+  );
 
   for (let i = 0; i < files.length; i++) {
-    await processDocument(docMetas[i]!, files[i]!, libraryId)
+    enqueue(() => processDocument(docMetas[i]!, files[i]!, libraryId));
   }
 
-  store.removeBatchFromQueue(docMetas.map((doc) => doc.id))
+  await waitForQueue();
 }

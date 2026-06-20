@@ -3,11 +3,16 @@ import { pipeline, type FeatureExtractionPipeline } from '@huggingface/transform
 
 export type EmbeddingModelStatus = 'idle' | 'loading' | 'ready' | 'error'
 
+export type EmbeddingProgressCallback = (current: number, total: number) => void | Promise<void>
+
 export interface EmbeddingWorkerAPI {
   loadModel(): Promise<void>
   getStatus(): EmbeddingModelStatus
   generateEmbedding(text: string): Promise<number[]>
-  generateEmbeddings(texts: string[]): Promise<number[][]>
+  generateEmbeddings(
+    texts: string[],
+    onProgress?: EmbeddingProgressCallback
+  ): Promise<number[][]>
 }
 
 let extractor: FeatureExtractionPipeline | null = null
@@ -37,7 +42,10 @@ async function generateEmbedding(text: string): Promise<number[]> {
   return Array.from(output.data as Float32Array)
 }
 
-async function generateEmbeddings(texts: string[]): Promise<number[][]> {
+async function generateEmbeddings(
+  texts: string[],
+  onProgress?: EmbeddingProgressCallback
+): Promise<number[][]> {
   if (!extractor) throw new Error('Model not loaded')
   const results: number[][] = []
   // Process in batches of 8 to avoid memory overflow
@@ -53,6 +61,7 @@ async function generateEmbeddings(texts: string[]): Promise<number[][]> {
       )
       results.push(embedding)
     }
+    await onProgress?.(Math.min(i + BATCH_SIZE, texts.length), texts.length)
   }
   return results
 }

@@ -125,13 +125,15 @@ describe('library.service', () => {
     it('should cascade delete documents in library', async () => {
       const library = await createLibrary('My Library')
       
+      const now = Date.now()
       await db.documents.add({
         id: 'doc1',
         libraryId: library.id,
         name: 'test.pdf',
         type: 'pdf',
         size: 1000,
-        createdAt: Date.now(),
+        createdAt: now,
+        updatedAt: now,
         status: 'pending',
         chunkCount: 0,
       })

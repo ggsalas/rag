@@ -7,8 +7,10 @@ export type DocumentMeta = {
   type: 'pdf' | 'docx' | 'txt' | 'md'
   size: number
   createdAt: number
+  updatedAt: number
   status: DocumentStatus
   chunkCount: number
+  processingProgress?: number // 0-100, only present when status is processing
   error?: string
 }
 

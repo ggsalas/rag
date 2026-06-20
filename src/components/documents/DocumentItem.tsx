@@ -1,16 +1,20 @@
-import type { DocumentMeta } from '@/types/document'
-import { formatFileSize, formatDate } from '@/lib/utils'
-import { Button } from '@/components/ui/Button'
-import { useAppStore } from '@/store/app.store'
+import type { DocumentMeta } from "@/types/document";
+import { formatFileSize, formatDate } from "@/lib/utils";
+import { Button } from "@/components/ui/Button";
 
 interface DocumentItemProps {
-  document: DocumentMeta
-  confirmDelete: string | null
-  onConfirmDelete: (id: string | null) => void
-  onDelete: (id: string) => Promise<void>
+  document: DocumentMeta;
+  confirmDelete: string | null;
+  onConfirmDelete: (id: string | null) => void;
+  onDelete: (id: string) => Promise<void>;
 }
 
-const PROCESSING_STATUSES: DocumentMeta['status'][] = ['pending', 'parsing', 'chunking', 'embedding']
+const PROCESSING_STATUSES: DocumentMeta["status"][] = [
+  "pending",
+  "parsing",
+  "chunking",
+  "embedding",
+];
 
 export function DocumentItem({
   document,
@@ -18,15 +22,14 @@ export function DocumentItem({
   onConfirmDelete,
   onDelete,
 }: DocumentItemProps) {
-  const processingQueue = useAppStore((s) => s.processingQueue)
-  const processingItem = processingQueue.find((item) => item.documentId === document.id)
-  const isProcessing = PROCESSING_STATUSES.includes(document.status)
-  const progress = processingItem?.progress ?? 0
+  const isProcessing = PROCESSING_STATUSES.includes(document.status);
+  const progress = document.processingProgress ?? 0;
+  const hasError = document.status === "error";
 
   const handleDelete = async () => {
-    await onDelete(document.id)
-    onConfirmDelete(null)
-  }
+    await onDelete(document.id);
+    onConfirmDelete(null);
+  };
 
   return (
     <>
@@ -37,6 +40,9 @@ export function DocumentItem({
               {document.name}
             </div>
           </div>
+          {hasError && document.error && (
+            <div className="text-xs text-red-600 mt-1">{document.error}</div>
+          )}
         </td>
         <td className="px-6 py-4 whitespace-nowrap">
           <div className="text-sm text-gray-500">
@@ -56,33 +62,28 @@ export function DocumentItem({
           {formatDate(document.createdAt)}
         </td>
         <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-          {document.status === 'indexed' &&
-            (confirmDelete === document.id ? (
-              <div className="flex gap-2 justify-end">
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => onConfirmDelete(null)}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  variant="danger"
-                  size="sm"
-                  onClick={handleDelete}
-                >
-                  Confirm
-                </Button>
-              </div>
-            ) : (
+          {confirmDelete === document.id ? (
+            <div className="flex gap-2 justify-end">
               <Button
-                variant="danger"
+                variant="secondary"
                 size="sm"
-                onClick={() => onConfirmDelete(document.id)}
+                onClick={() => onConfirmDelete(null)}
               >
-                Delete
+                Cancel
               </Button>
-            ))}
+              <Button variant="danger" size="sm" onClick={handleDelete}>
+                Confirm
+              </Button>
+            </div>
+          ) : (
+            <Button
+              variant="danger"
+              size="sm"
+              onClick={() => onConfirmDelete(document.id)}
+            >
+              Delete
+            </Button>
+          )}
         </td>
       </tr>
       {isProcessing && (
@@ -98,22 +99,22 @@ export function DocumentItem({
         </tr>
       )}
     </>
-  )
+  );
 }
 
-function getStatusColor(status: DocumentMeta['status']) {
+function getStatusColor(status: DocumentMeta["status"]) {
   switch (status) {
-    case 'pending':
-      return 'bg-gray-100 text-gray-800'
-    case 'parsing':
-    case 'chunking':
-    case 'embedding':
-      return 'bg-yellow-100 text-yellow-800'
-    case 'indexed':
-      return 'bg-green-100 text-green-800'
-    case 'error':
-      return 'bg-red-100 text-red-800'
+    case "pending":
+      return "bg-gray-100 text-gray-800";
+    case "parsing":
+    case "chunking":
+    case "embedding":
+      return "bg-yellow-100 text-yellow-800";
+    case "indexed":
+      return "bg-green-100 text-green-800";
+    case "error":
+      return "bg-red-100 text-red-800";
     default:
-      return 'bg-gray-100 text-gray-800'
+      return "bg-gray-100 text-gray-800";
   }
 }

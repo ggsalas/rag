@@ -1,5 +1,6 @@
+import { proxy } from 'comlink'
 import { getEmbeddingWorker } from '@/workers/worker-api'
-import type { EmbeddingModelStatus } from '@/workers/embedding.worker'
+import type { EmbeddingModelStatus, EmbeddingProgressCallback } from '@/workers/embedding.worker'
 
 export async function initModel(): Promise<void> {
   const worker = getEmbeddingWorker()
@@ -16,7 +17,10 @@ export async function embed(text: string): Promise<number[]> {
   return worker.generateEmbedding(text)
 }
 
-export async function embedBatch(texts: string[]): Promise<number[][]> {
+export async function embedBatch(
+  texts: string[],
+  onProgress?: EmbeddingProgressCallback
+): Promise<number[][]> {
   const worker = getEmbeddingWorker()
-  return worker.generateEmbeddings(texts)
+  return worker.generateEmbeddings(texts, onProgress ? proxy(onProgress) : undefined)
 }
