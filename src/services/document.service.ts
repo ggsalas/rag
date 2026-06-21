@@ -1,8 +1,9 @@
-import { db } from './db'
+import { db } from '@/infrastructure/db'
 import { generateId } from '@/lib/utils'
 import type { DocumentMeta, DocumentStatus, DocumentContent } from '@/types/document'
 import { removeByDocumentId } from '@/services/embedding/vector-store'
 
+/** Creates a document record in the database for a library */
 export async function createDocument(
   libraryId: string,
   file: { name: string; size: number; type: string }
@@ -34,6 +35,7 @@ export async function createDocument(
   return document
 }
 
+/** Retrieves all documents for a library, sorted by creation date descending */
 export async function getDocumentsByLibrary(libraryId: string): Promise<DocumentMeta[]> {
   return db.documents
     .where('libraryId')
@@ -42,14 +44,17 @@ export async function getDocumentsByLibrary(libraryId: string): Promise<Document
     .sortBy('createdAt')
 }
 
+/** Retrieves a single document by ID */
 export async function getDocumentById(id: string): Promise<DocumentMeta | undefined> {
   return db.documents.get(id)
 }
 
+/** Updates the processing status of a document */
 export async function updateDocumentStatus(id: string, status: DocumentStatus): Promise<void> {
   await db.documents.update(id, { status, updatedAt: Date.now() })
 }
 
+/** Deletes a document and all its associated chunks from database and vector index */
 export async function deleteDocument(id: string): Promise<void> {
   const document = await db.documents.get(id)
   if (!document) return
@@ -112,6 +117,7 @@ export async function cleanupInterruptedDocuments(): Promise<number> {
   return interruptedDocs.length
 }
 
+/** Infers document type from MIME type or file extension */
 function inferDocumentType(mimeType: string, fileName: string): 'pdf' | 'docx' | 'txt' | 'md' {
   if (mimeType === 'application/pdf' || fileName.endsWith('.pdf')) return 'pdf'
   if (
@@ -124,10 +130,12 @@ function inferDocumentType(mimeType: string, fileName: string): 'pdf' | 'docx' |
   return 'txt'
 }
 
+/** Saves the extracted text content of a document to the database */
 export async function saveDocumentContent(content: DocumentContent): Promise<void> {
   await db.documentContents.put(content)
 }
 
+/** Retrieves the full text content of a document */
 export async function getDocumentContent(documentId: string): Promise<DocumentContent | undefined> {
   return db.documentContents.get(documentId)
 }

@@ -11,6 +11,7 @@ export interface ChunkOptions {
   overlap?: number
 }
 
+/** Splits text into chunks with configurable size and overlap */
 export function chunkText(text: string, options?: ChunkOptions): ChunkData[] {
   const size = options?.size ?? CHUNK_SIZE
   const overlap = options?.overlap ?? CHUNK_OVERLAP
@@ -60,7 +61,7 @@ export function chunkText(text: string, options?: ChunkOptions): ChunkData[] {
   return chunks
 }
 
-/** With pages (for PDF): chunk text already split by pages */
+/** Chunks text with page information preserved (for PDF documents) */
 export function chunkTextWithPages(pages: string[], options?: ChunkOptions): ChunkData[] {
   const size = options?.size ?? CHUNK_SIZE
   const overlap = options?.overlap ?? CHUNK_OVERLAP
@@ -97,6 +98,7 @@ export function chunkTextWithPages(pages: string[], options?: ChunkOptions): Chu
   return chunks
 }
 
+/** Finds an appropriate break point in text to avoid splitting mid-sentence */
 function findBreakPoint(text: string, maxLength: number): number {
   // Look for sentence boundary before the limit
   const sub = text.slice(0, maxLength)
@@ -107,6 +109,7 @@ function findBreakPoint(text: string, maxLength: number): number {
   return maxLength
 }
 
+/** Splits text into sentences for fine-grained chunking */
 function splitSentences(text: string): string[] {
   return text.match(/[^.!?]+[.!?]+\s*|[^.!?]+$/g) || [text]
 }

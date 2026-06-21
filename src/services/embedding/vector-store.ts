@@ -14,6 +14,7 @@ export interface VectorSearchResult {
 
 const indexes = new Map<string, AnyOrama>()
 
+/** Creates a new Orama vector index for a library */
 async function createIndex(libraryId: string): Promise<AnyOrama> {
   const index = await create({
     schema: {
@@ -30,12 +31,14 @@ async function createIndex(libraryId: string): Promise<AnyOrama> {
   return index
 }
 
+/** Retrieves existing index or creates a new one for a library */
 export async function getOrCreateIndex(libraryId: string): Promise<AnyOrama> {
   const existing = indexes.get(libraryId)
   if (existing) return existing
   return createIndex(libraryId)
 }
 
+/** Inserts chunks into a library's vector index */
 export async function insertChunks(libraryId: string, chunks: Chunk[]): Promise<void> {
   const index = await getOrCreateIndex(libraryId)
   for (const chunk of chunks) {
@@ -51,6 +54,7 @@ export async function insertChunks(libraryId: string, chunks: Chunk[]): Promise<
   }
 }
 
+/** Performs vector similarity search within a library's index */
 export async function searchByVector(
   libraryId: string,
   embedding: number[],
@@ -81,6 +85,7 @@ export async function searchByVector(
   })
 }
 
+/** Removes all chunks belonging to a specific document from the vector index */
 export async function removeByDocumentId(libraryId: string, documentId: string): Promise<void> {
   const index = indexes.get(libraryId)
   if (!index) return
@@ -97,6 +102,7 @@ export async function removeByDocumentId(libraryId: string, documentId: string):
   }
 }
 
+/** Rebuilds a library's vector index from scratch with provided chunks */
 export async function rebuildIndex(libraryId: string, chunks: Chunk[]): Promise<void> {
   indexes.delete(libraryId)
   if (chunks.length > 0) {
@@ -104,10 +110,12 @@ export async function rebuildIndex(libraryId: string, chunks: Chunk[]): Promise<
   }
 }
 
+/** Removes a library's vector index from memory */
 export function removeIndex(libraryId: string): void {
   indexes.delete(libraryId)
 }
 
+/** Checks if a vector index exists for a library */
 export function hasIndex(libraryId: string): boolean {
   return indexes.has(libraryId)
 }

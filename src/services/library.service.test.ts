@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { db } from './db'
+import { db } from '@/infrastructure/db'
 import {
   createLibrary,
   getAllLibraries,

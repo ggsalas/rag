@@ -21,6 +21,7 @@ export interface ParserWorkerAPI {
   parseText(text: string): Promise<ParseResult>
 }
 
+/** Parses a PDF file and extracts text content with page information */
 async function parsePdf(
   buffer: ArrayBuffer,
   onProgress?: ParseProgressCallback
@@ -49,11 +50,13 @@ async function parsePdf(
   }
 }
 
+/** Parses a DOCX file and extracts raw text content */
 async function parseDocx(buffer: ArrayBuffer): Promise<ParseResult> {
   const result = await extractRawText({ arrayBuffer: buffer })
   return { text: result.value }
 }
 
+/** Returns text content as-is (for TXT and MD files) */
 async function parseText(text: string): Promise<ParseResult> {
   return { text }
 }

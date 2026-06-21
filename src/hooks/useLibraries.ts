@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import type { Library } from '@/types/library'
 import * as libraryService from '@/services/library.service'
 
+/** Hook for managing all libraries with CRUD operations */
 export function useLibraries() {
   const [libraries, setLibraries] = useState<Library[]>([])
   const [loading, setLoading] = useState(true)

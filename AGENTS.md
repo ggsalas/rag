@@ -29,14 +29,16 @@ Users organize documents into **Libraries**. Each library is an independent coll
 
 ```
 src/
-├── routes/          # Pages and loaders (React Router)
-├── components/      # React components (ui/, libraries/, documents/, search/)
+├── types/           # Shared TypeScript types
+├── lib/             # Pure utilities and constants
+├── infrastructure/  # External tools setup (DB, vector store, worker access)
 ├── services/        # Business logic (NO React dependency)
 ├── workers/         # Web Workers (embedding, parsing)
 ├── store/           # Zustand global state
 ├── hooks/           # Custom React hooks
-├── lib/             # Pure utilities and constants
-└── types/           # Shared TypeScript types
+│   └── data/        # Data hooks (ONLY layer allowed to import db directly)
+├── components/      # React components (ui/, libraries/, documents/, search/)
+└── routes/          # Pages and loaders (React Router)
 ```
 
 ## Architecture Rules (MUST follow)
@@ -44,23 +46,34 @@ src/
 ### Dependency Direction
 
 ```
-types → lib → services/workers → store/hooks → components → routes
+types → lib → infrastructure → services/workers → store/hooks → components → routes
 ```
 
 Never import against this direction. If you need to, refactor instead.
 
 ### Layer Rules
 
-1. **`services/`** MUST NOT import from `react`, `components/`, `hooks/`, or `store/`.
+1. **`infrastructure/`** contains setup for external tools (Dexie database, Orama vector store, Comlink worker proxies). It MUST NOT import from `services/`, `workers/`, `components/`, `hooks/`, or `store/`. Infrastructure provides low-level access that services consume.
+
+2. **`services/`** MUST NOT import from `react`, `components/`, `hooks/`, or `store/`.
    Services are pure TypeScript. They receive all needed data as parameters.
 
-2. **`workers/`** run in a separate thread. They MUST NOT import from `services/`, `components/`, `hooks/`, or `store/`. They can only import from `types/` and external libraries.
+3. **`workers/`** run in a separate thread. They MUST NOT import from `services/`, `components/`, `hooks/`, or `store/`. They can only import from `types/` and external libraries.
 
-3. **`components/`** MUST NOT import from `services/` directly. Use `hooks/` to connect components to business logic.
+4. **`hooks/data/`** (Data Hooks) - ARCHITECTURE EXCEPTION: These hooks are the ONLY ones allowed to import from `infrastructure/db` directly. They encapsulate Dexie's `useLiveQuery` for reactive database queries. All data hooks MUST:
+   - Be read-only (no create/update/delete operations)
+   - Use naming convention: `use[Entity]Data.ts`
+   - Be simple queries (filtering, sorting, counting)
+   - NOT contain business logic (that goes in business hooks or services)
+   - See `hooks/data/README.md` for detailed rules
 
-4. **`routes/`** can import from `components/`, `hooks/`, and `services/` (only in loaders/actions).
+5. **`hooks/`** (Business Hooks) MUST NOT import from `infrastructure/db` directly. They should use data hooks from `hooks/data/` for reactive queries and services for write operations.
 
-5. **`store/`** (Zustand) holds ONLY cross-route state:
+6. **`components/`** MUST NOT import from `services/` or `infrastructure/` directly. Use `hooks/` or `hooks/data/` to connect components to data and business logic.
+
+7. **`routes/`** can import from `components/`, `hooks/`, and `services/` (only in loaders/actions).
+
+8. **`store/`** (Zustand) holds ONLY cross-route state:
    - `modelStatus` (embedding model loading state)
    - `processingQueue` (documents being processed)
    - `stats` (global statistics)
@@ -126,6 +139,22 @@ Library (1)
 - All services use `async/await` (no `.then()` chains).
 - Tailwind CSS v4: styles configured via CSS (`@import "tailwindcss"`), NO `tailwind.config.js`.
 
+## Documentation Style
+
+- Use JSDoc comments (`/** */`) for all exported functions and key internal functions.
+- Keep comments concise — focus on what the function does, not implementation details.
+- Write all code comments in **English**.
+- Format: `/** Brief description */`
+- Include inline comments (`//`) for complex logic blocks that need clarification.
+- Example:
+  ```ts
+  /** Processes a document through the complete ingestion pipeline */
+  async function processDocument(docMeta: DocumentMeta, file: File): Promise<void> {
+    // Use page-aware chunking if parser extracted page information
+    const chunks = parseResult.pages ? chunkWithPages(pages) : chunkText(text);
+  }
+  ```
+
 ## Key Patterns
 
 ### Services receive libraryId, they don't know the current route:
@@ -141,7 +170,7 @@ async function search(query: string): Promise<SearchResult[]> {
 
 ### Workers are accessed via Comlink proxies:
 ```ts
-// worker-api.ts
+// infrastructure/worker-pool.ts
 import { wrap, type Remote } from 'comlink'
 
 let parserWorker: Remote<ParserWorkerAPI> | null = null
@@ -149,7 +178,7 @@ let parserWorker: Remote<ParserWorkerAPI> | null = null
 export function getParserWorker(): Remote<ParserWorkerAPI> {
   if (!parserWorker) {
     const worker = new Worker(
-      new URL('./parser.worker.ts', import.meta.url),
+      new URL('@/workers/parser.worker.ts', import.meta.url),
       { type: 'module' }
     )
     parserWorker = wrap<ParserWorkerAPI>(worker)

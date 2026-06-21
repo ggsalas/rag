@@ -3,7 +3,8 @@ import { Outlet, NavLink, useParams, useNavigate, useLocation } from 'react-rout
 import { useLibrary } from '@/hooks/useLibrary'
 import { hasIndex, rebuildIndex } from '@/services/embedding/vector-store'
 import { search as searchService } from '@/services/search/search.service'
-import { db } from '@/services/db'
+import { getChunksByLibrary } from '@/services/chunk.service'
+import { useDocumentData } from '@/hooks/data/useDocumentData'
 import type { SearchResult } from '@/types/search'
 
 interface OpenDocument {
@@ -24,23 +25,18 @@ export function LibraryLayout() {
   const [searchError, setSearchError] = useState<string | null>(null)
   const [hasSearched, setHasSearched] = useState(false)
 
-  // Track open document tabs
+  // Track open document tabs using data hook
+  const { document: currentDoc } = useDocumentData(documentId)
+  
   useEffect(() => {
-    if (!documentId) return
+    if (!currentDoc) return
     
-    async function addDocumentTab() {
-      const doc = await db.documents.get(documentId!)
-      if (doc) {
-        setOpenDocuments((prev) => {
-          const alreadyOpen = prev.some((d) => d.id === documentId)
-          if (alreadyOpen) return prev
-          return [...prev, { id: doc.id, name: doc.name }]
-        })
-      }
-    }
-    
-    addDocumentTab()
-  }, [documentId])
+    setOpenDocuments((prev) => {
+      const alreadyOpen = prev.some((d) => d.id === currentDoc.id)
+      if (alreadyOpen) return prev
+      return [...prev, { id: currentDoc.id, name: currentDoc.name }]
+    })
+  }, [currentDoc])
 
   const closeDocumentTab = useCallback((docId: string) => {
     setOpenDocuments((prev) => prev.filter((d) => d.id !== docId))
@@ -91,7 +87,7 @@ export function LibraryLayout() {
   useEffect(() => {
     async function hydrateIndex() {
       if (!libraryId || hasIndex(libraryId)) return
-      const chunks = await db.chunks.where('libraryId').equals(libraryId).toArray()
+      const chunks = await getChunksByLibrary(libraryId)
       if (chunks.length > 0) {
         await rebuildIndex(libraryId, chunks)
       }

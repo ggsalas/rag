@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import type { Library } from '@/types/library'
 import * as libraryService from '@/services/library.service'
 
+/** Hook for fetching a single library by ID */
 export function useLibrary(libraryId: string) {
   const [library, setLibrary] = useState<Library | undefined>()
   const [loading, setLoading] = useState(true)

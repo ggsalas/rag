@@ -2,6 +2,7 @@ import { useState, useCallback, useRef } from "react";
 import { search as searchService } from "@/services/search/search.service";
 import type { SearchResult } from "@/types/search";
 
+/** Hook for performing semantic search within a library */
 export function useSearch(libraryId: string) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);

@@ -3,6 +3,7 @@ import { searchByVector } from '@/services/embedding/vector-store'
 import { DEFAULT_TOP_K } from '@/lib/constants'
 import type { SearchResult } from '@/types/search'
 
+/** Performs semantic search within a library using vector embeddings */
 export async function search(
   query: string,
   libraryId: string,

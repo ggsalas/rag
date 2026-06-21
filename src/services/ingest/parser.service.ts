@@ -1,7 +1,8 @@
 import { proxy } from 'comlink'
-import { getParserWorker } from '@/workers/worker-api'
+import { getParserWorker } from '@/infrastructure/worker-pool'
 import type { ParseResult, ParseProgressCallback } from '@/workers/parser.worker'
 
+/** Parses a file and extracts text content using the appropriate parser */
 export async function parseFile(
   file: File,
   onProgress?: ParseProgressCallback

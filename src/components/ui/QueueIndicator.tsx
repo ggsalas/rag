@@ -1,13 +1,7 @@
-import { useLiveQuery } from "dexie-react-hooks";
-import { db } from "@/services/db";
+import { useProcessingCountData } from "@/hooks/data/useProcessingCountData";
 
 export function QueueIndicator() {
-  const processingDocs = useLiveQuery(() =>
-    db.documents
-      .where("status")
-      .anyOf(["pending", "parsing", "chunking", "embedding"])
-      .count()
-  );
+  const processingDocs = useProcessingCountData();
 
   if (!processingDocs) return null;
 
