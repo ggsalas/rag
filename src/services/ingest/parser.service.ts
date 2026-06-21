@@ -1,11 +1,14 @@
 import { proxy } from 'comlink'
 import { getParserWorker } from '@/infrastructure/worker-pool'
-import type { ParseResult, ParseProgressCallback } from '@/workers/parser.worker'
+import type {
+  ParseResult,
+  ParseProgressCallback,
+} from '@/workers/parser.worker'
 
 /** Parses a file and extracts text content using the appropriate parser */
 export async function parseFile(
   file: File,
-  onProgress?: ParseProgressCallback
+  onProgress?: ParseProgressCallback,
 ): Promise<ParseResult> {
   const worker = getParserWorker()
 
@@ -16,7 +19,8 @@ export async function parseFile(
 
   if (
     file.name.endsWith('.docx') ||
-    file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    file.type ===
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
   ) {
     const buffer = await file.arrayBuffer()
     return worker.parseDocx(buffer)

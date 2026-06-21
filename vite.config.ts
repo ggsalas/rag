@@ -13,19 +13,19 @@ export default defineConfig({
       registerType: 'autoUpdate',
       manifest: false, // We use our own manifest.json in public/
       workbox: {
-        globPatterns: ['**/*.{js,css,html,ico,png,svg}']
-      }
-    })
+        globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
+      },
+    }),
   ],
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, './src')
-    }
+      '@': path.resolve(__dirname, './src'),
+    },
   },
   test: {
     globals: true,
     environment: 'jsdom',
     include: ['src/**/*.test.{ts,tsx}'],
-    setupFiles: ['./src/test-setup.ts']
-  }
+    setupFiles: ['./src/test-setup.ts'],
+  },
 })

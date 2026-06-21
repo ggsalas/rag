@@ -7,7 +7,9 @@ export async function getChunksByLibrary(libraryId: string): Promise<Chunk[]> {
 }
 
 /** Retrieves all chunks for a specific document */
-export async function getChunksByDocument(documentId: string): Promise<Chunk[]> {
+export async function getChunksByDocument(
+  documentId: string,
+): Promise<Chunk[]> {
   return db.chunks.where('documentId').equals(documentId).sortBy('chunkIndex')
 }
 
@@ -15,7 +17,7 @@ export async function getChunksByDocument(documentId: string): Promise<Chunk[]> 
 export async function getChunkByIndex(
   libraryId: string,
   documentId: string,
-  chunkIndex: number
+  chunkIndex: number,
 ): Promise<Chunk | undefined> {
   return db.chunks
     .where('[libraryId+documentId]')

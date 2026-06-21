@@ -39,7 +39,10 @@ export async function getOrCreateIndex(libraryId: string): Promise<AnyOrama> {
 }
 
 /** Inserts chunks into a library's vector index */
-export async function insertChunks(libraryId: string, chunks: Chunk[]): Promise<void> {
+export async function insertChunks(
+  libraryId: string,
+  chunks: Chunk[],
+): Promise<void> {
   const index = await getOrCreateIndex(libraryId)
   for (const chunk of chunks) {
     await insert(index, {
@@ -58,7 +61,7 @@ export async function insertChunks(libraryId: string, chunks: Chunk[]): Promise<
 export async function searchByVector(
   libraryId: string,
   embedding: number[],
-  topK?: number
+  topK?: number,
 ): Promise<VectorSearchResult[]> {
   const index = indexes.get(libraryId)
   if (!index) return []
@@ -86,7 +89,10 @@ export async function searchByVector(
 }
 
 /** Removes all chunks belonging to a specific document from the vector index */
-export async function removeByDocumentId(libraryId: string, documentId: string): Promise<void> {
+export async function removeByDocumentId(
+  libraryId: string,
+  documentId: string,
+): Promise<void> {
   const index = indexes.get(libraryId)
   if (!index) return
 
@@ -103,7 +109,10 @@ export async function removeByDocumentId(libraryId: string, documentId: string):
 }
 
 /** Rebuilds a library's vector index from scratch with provided chunks */
-export async function rebuildIndex(libraryId: string, chunks: Chunk[]): Promise<void> {
+export async function rebuildIndex(
+  libraryId: string,
+  chunks: Chunk[],
+): Promise<void> {
   indexes.delete(libraryId)
   if (chunks.length > 0) {
     await insertChunks(libraryId, chunks)

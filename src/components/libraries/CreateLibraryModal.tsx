@@ -8,7 +8,11 @@ interface CreateLibraryModalProps {
   onCreate: (name: string, description?: string) => Promise<void>
 }
 
-export function CreateLibraryModal({ open, onClose, onCreate }: CreateLibraryModalProps) {
+export function CreateLibraryModal({
+  open,
+  onClose,
+  onCreate,
+}: CreateLibraryModalProps) {
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [loading, setLoading] = useState(false)
@@ -16,12 +20,12 @@ export function CreateLibraryModal({ open, onClose, onCreate }: CreateLibraryMod
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
-    
+
     if (!name.trim()) {
       setError('Name is required')
       return
     }
-    
+
     if (name.length > 100) {
       setError('Name must be 100 characters or less')
       return
@@ -29,7 +33,7 @@ export function CreateLibraryModal({ open, onClose, onCreate }: CreateLibraryMod
 
     setLoading(true)
     setError('')
-    
+
     try {
       await onCreate(name.trim(), description.trim() || undefined)
       setName('')
@@ -55,7 +59,10 @@ export function CreateLibraryModal({ open, onClose, onCreate }: CreateLibraryMod
     <Modal open={open} onClose={handleClose} title="Create New Library">
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
-          <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-1">
+          <label
+            htmlFor="name"
+            className="block text-sm font-medium text-gray-700 mb-1"
+          >
             Name <span className="text-red-500">*</span>
           </label>
           <input
@@ -71,7 +78,10 @@ export function CreateLibraryModal({ open, onClose, onCreate }: CreateLibraryMod
         </div>
 
         <div>
-          <label htmlFor="description" className="block text-sm font-medium text-gray-700 mb-1">
+          <label
+            htmlFor="description"
+            className="block text-sm font-medium text-gray-700 mb-1"
+          >
             Description
           </label>
           <textarea
@@ -85,9 +95,7 @@ export function CreateLibraryModal({ open, onClose, onCreate }: CreateLibraryMod
           />
         </div>
 
-        {error && (
-          <p className="text-sm text-red-600">{error}</p>
-        )}
+        {error && <p className="text-sm text-red-600">{error}</p>}
 
         <div className="flex justify-end gap-3 pt-2">
           <Button
@@ -98,11 +106,7 @@ export function CreateLibraryModal({ open, onClose, onCreate }: CreateLibraryMod
           >
             Cancel
           </Button>
-          <Button
-            type="submit"
-            variant="primary"
-            loading={loading}
-          >
+          <Button type="submit" variant="primary" loading={loading}>
             Create Library
           </Button>
         </div>

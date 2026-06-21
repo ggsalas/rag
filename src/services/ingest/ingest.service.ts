@@ -1,23 +1,23 @@
-import { generateId } from "@/lib/utils";
-import { parseFile } from "./parser.service";
-import { chunkText, chunkTextWithPages } from "./chunking.service";
-import { embedBatch } from "@/services/embedding/embedding.service";
-import { insertChunks } from "@/services/embedding/vector-store";
-import { db } from "@/infrastructure/db";
+import { generateId } from '@/lib/utils'
+import { parseFile } from './parser.service'
+import { chunkText, chunkTextWithPages } from './chunking.service'
+import { embedBatch } from '@/services/embedding/embedding.service'
+import { insertChunks } from '@/services/embedding/vector-store'
+import { db } from '@/infrastructure/db'
 import {
   updateDocumentStatus,
   createDocument,
   saveDocumentContent,
-} from "@/services/document.service";
-import type { Chunk, DocumentMeta } from "@/types/document";
-import { enqueue, waitForQueue } from "./ingest-queue";
+} from '@/services/document.service'
+import type { Chunk, DocumentMeta } from '@/types/document'
+import { enqueue, waitForQueue } from './ingest-queue'
 
 const PROGRESS = {
   PARSING: [0, 10] as const,
   CHUNKING: [10, 15] as const,
   EMBEDDING: [15, 90] as const,
   INDEXING: [90, 100] as const,
-};
+}
 
 /** Maps progress value to a percentage range */
 function mapRange(
@@ -25,8 +25,8 @@ function mapRange(
   total: number,
   range: readonly [number, number],
 ): number {
-  if (total <= 0) return range[1];
-  return Math.round(range[0] + (value / total) * (range[1] - range[0]));
+  if (total <= 0) return range[1]
+  return Math.round(range[0] + (value / total) * (range[1] - range[0]))
 }
 
 /** Updates document processing progress in the database */
@@ -37,7 +37,7 @@ async function updateProgress(
   await db.documents.update(documentId, {
     processingProgress: progress,
     updatedAt: Date.now(),
-  });
+  })
 }
 
 /**
@@ -51,45 +51,45 @@ async function processDocument(
   libraryId: string,
 ): Promise<void> {
   try {
-    await updateDocumentStatus(docMeta.id, "parsing");
-    await updateProgress(docMeta.id, PROGRESS.PARSING[0]);
+    await updateDocumentStatus(docMeta.id, 'parsing')
+    await updateProgress(docMeta.id, PROGRESS.PARSING[0])
 
     const parseResult = await parseFile(file, async (current, total) => {
       await updateProgress(
         docMeta.id,
         mapRange(current, total, PROGRESS.PARSING),
-      );
-    });
+      )
+    })
 
     await saveDocumentContent({
       documentId: docMeta.id,
       libraryId,
       text: parseResult.text,
       pages: parseResult.pages,
-    });
+    })
 
-    await updateDocumentStatus(docMeta.id, "chunking");
-    await updateProgress(docMeta.id, PROGRESS.CHUNKING[0]);
+    await updateDocumentStatus(docMeta.id, 'chunking')
+    await updateProgress(docMeta.id, PROGRESS.CHUNKING[0])
 
     // Use page-aware chunking if the parser extracted page information
     const chunkDataList = parseResult.pages
       ? chunkTextWithPages(parseResult.pages)
-      : chunkText(parseResult.text);
+      : chunkText(parseResult.text)
 
     if (chunkDataList.length === 0) {
-      throw new Error("No text could be extracted from document");
+      throw new Error('No text could be extracted from document')
     }
 
-    await updateDocumentStatus(docMeta.id, "embedding");
-    await updateProgress(docMeta.id, PROGRESS.EMBEDDING[0]);
+    await updateDocumentStatus(docMeta.id, 'embedding')
+    await updateProgress(docMeta.id, PROGRESS.EMBEDDING[0])
 
-    const texts = chunkDataList.map((c) => c.text);
+    const texts = chunkDataList.map((c) => c.text)
     const embeddings = await embedBatch(texts, async (current, total) => {
       await updateProgress(
         docMeta.id,
         mapRange(current, total, PROGRESS.EMBEDDING),
-      );
-    });
+      )
+    })
 
     const chunks: Chunk[] = chunkDataList.map((data, i) => ({
       id: generateId(),
@@ -100,34 +100,34 @@ async function processDocument(
       text: data.text,
       embedding: embeddings[i]!,
       page: data.page,
-    }));
+    }))
 
-    await updateProgress(docMeta.id, PROGRESS.INDEXING[0]);
-    await db.chunks.bulkAdd(chunks);
+    await updateProgress(docMeta.id, PROGRESS.INDEXING[0])
+    await db.chunks.bulkAdd(chunks)
 
-    await insertChunks(libraryId, chunks);
+    await insertChunks(libraryId, chunks)
 
     // Update document and library with final chunk counts
     await db.documents.update(docMeta.id, {
       chunkCount: chunks.length,
       processingProgress: undefined,
-    });
+    })
     await db.libraries
-      .where("id")
+      .where('id')
       .equals(libraryId)
       .modify((lib) => {
-        lib.chunkCount = (lib.chunkCount || 0) + chunks.length;
-      });
+        lib.chunkCount = (lib.chunkCount || 0) + chunks.length
+      })
 
-    await updateDocumentStatus(docMeta.id, "indexed");
+    await updateDocumentStatus(docMeta.id, 'indexed')
   } catch (error) {
     // Mark document as error and clear progress
-    const errMsg = error instanceof Error ? error.message : "Unknown error";
+    const errMsg = error instanceof Error ? error.message : 'Unknown error'
     await db.documents.update(docMeta.id, {
-      status: "error",
+      status: 'error',
       error: errMsg,
       processingProgress: undefined,
-    });
+    })
   }
 }
 
@@ -147,11 +147,11 @@ export async function ingestDocuments(
         type: file.type,
       }),
     ),
-  );
+  )
 
   for (let i = 0; i < files.length; i++) {
-    enqueue(() => processDocument(docMetas[i]!, files[i]!, libraryId));
+    enqueue(() => processDocument(docMetas[i]!, files[i]!, libraryId))
   }
 
-  await waitForQueue();
+  await waitForQueue()
 }

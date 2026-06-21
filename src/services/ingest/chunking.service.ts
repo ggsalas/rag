@@ -29,7 +29,10 @@ export function chunkText(text: string, options?: ChunkOptions): ChunkData[] {
     if (!trimmed) continue
 
     // If adding this paragraph exceeds size limit, close current chunk
-    if (currentChunk.length + trimmed.length + 1 > size && currentChunk.length > 0) {
+    if (
+      currentChunk.length + trimmed.length + 1 > size &&
+      currentChunk.length > 0
+    ) {
       chunks.push({ text: currentChunk.trim(), chunkIndex })
       chunkIndex++
 
@@ -46,7 +49,10 @@ export function chunkText(text: string, options?: ChunkOptions): ChunkData[] {
     // If a single paragraph exceeds size, split by sentences
     while (currentChunk.length > size) {
       const breakPoint = findBreakPoint(currentChunk, size)
-      chunks.push({ text: currentChunk.slice(0, breakPoint).trim(), chunkIndex })
+      chunks.push({
+        text: currentChunk.slice(0, breakPoint).trim(),
+        chunkIndex,
+      })
       chunkIndex++
 
       const remaining = currentChunk.slice(breakPoint - overlap).trim()
@@ -62,7 +68,10 @@ export function chunkText(text: string, options?: ChunkOptions): ChunkData[] {
 }
 
 /** Chunks text with page information preserved (for PDF documents) */
-export function chunkTextWithPages(pages: string[], options?: ChunkOptions): ChunkData[] {
+export function chunkTextWithPages(
+  pages: string[],
+  options?: ChunkOptions,
+): ChunkData[] {
   const size = options?.size ?? CHUNK_SIZE
   const overlap = options?.overlap ?? CHUNK_OVERLAP
   const chunks: ChunkData[] = []
@@ -76,8 +85,15 @@ export function chunkTextWithPages(pages: string[], options?: ChunkOptions): Chu
 
     const sentences = splitSentences(pageText)
     for (const sentence of sentences) {
-      if (currentChunk.length + sentence.length + 1 > size && currentChunk.length > 0) {
-        chunks.push({ text: currentChunk.trim(), chunkIndex, page: currentPage })
+      if (
+        currentChunk.length + sentence.length + 1 > size &&
+        currentChunk.length > 0
+      ) {
+        chunks.push({
+          text: currentChunk.trim(),
+          chunkIndex,
+          page: currentPage,
+        })
         chunkIndex++
         if (overlap > 0 && currentChunk.length > overlap) {
           currentChunk = currentChunk.slice(-overlap) + ' ' + sentence

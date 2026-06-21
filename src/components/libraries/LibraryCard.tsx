@@ -24,14 +24,16 @@ export function LibraryCard({ library, onDelete }: LibraryCardProps) {
           {library.name}
         </h3>
         {library.description && (
-          <p className="text-gray-600 mb-4 line-clamp-2">{library.description}</p>
+          <p className="text-gray-600 mb-4 line-clamp-2">
+            {library.description}
+          </p>
         )}
         <div className="flex items-center justify-between text-sm text-gray-500">
           <span>{library.documentCount} documents</span>
           <span>{formatDate(library.createdAt)}</span>
         </div>
       </Link>
-      
+
       <div className="mt-4 pt-4 border-t flex justify-end">
         {!showConfirm ? (
           <Button
@@ -50,11 +52,7 @@ export function LibraryCard({ library, onDelete }: LibraryCardProps) {
             >
               Cancel
             </Button>
-            <Button
-              variant="danger"
-              size="sm"
-              onClick={handleDelete}
-            >
+            <Button variant="danger" size="sm" onClick={handleDelete}>
               Confirm Delete
             </Button>
           </div>

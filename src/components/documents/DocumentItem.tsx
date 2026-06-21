@@ -1,21 +1,21 @@
-import type { DocumentMeta } from "@/types/document";
-import { formatFileSize, formatDate } from "@/lib/utils";
-import { Button } from "@/components/ui/Button";
-import { useParams, Link } from "react-router";
+import type { DocumentMeta } from '@/types/document'
+import { formatFileSize, formatDate } from '@/lib/utils'
+import { Button } from '@/components/ui/Button'
+import { useParams, Link } from 'react-router'
 
 interface DocumentItemProps {
-  document: DocumentMeta;
-  confirmDelete: string | null;
-  onConfirmDelete: (id: string | null) => void;
-  onDelete: (id: string) => Promise<void>;
+  document: DocumentMeta
+  confirmDelete: string | null
+  onConfirmDelete: (id: string | null) => void
+  onDelete: (id: string) => Promise<void>
 }
 
-const PROCESSING_STATUSES: DocumentMeta["status"][] = [
-  "pending",
-  "parsing",
-  "chunking",
-  "embedding",
-];
+const PROCESSING_STATUSES: DocumentMeta['status'][] = [
+  'pending',
+  'parsing',
+  'chunking',
+  'embedding',
+]
 
 export function DocumentItem({
   document,
@@ -24,15 +24,15 @@ export function DocumentItem({
   onDelete,
 }: DocumentItemProps) {
   const { libraryId } = useParams<{ libraryId: string }>()
-  const isProcessing = PROCESSING_STATUSES.includes(document.status);
-  const progress = document.processingProgress ?? 0;
-  const hasError = document.status === "error";
-  const canView = document.status === "indexed";
+  const isProcessing = PROCESSING_STATUSES.includes(document.status)
+  const progress = document.processingProgress ?? 0
+  const hasError = document.status === 'error'
+  const canView = document.status === 'indexed'
 
   const handleDelete = async () => {
-    await onDelete(document.id);
-    onConfirmDelete(null);
-  };
+    await onDelete(document.id)
+    onConfirmDelete(null)
+  }
 
   return (
     <>
@@ -111,22 +111,22 @@ export function DocumentItem({
         </tr>
       )}
     </>
-  );
+  )
 }
 
-function getStatusColor(status: DocumentMeta["status"]) {
+function getStatusColor(status: DocumentMeta['status']) {
   switch (status) {
-    case "pending":
-      return "bg-gray-100 text-gray-800";
-    case "parsing":
-    case "chunking":
-    case "embedding":
-      return "bg-yellow-100 text-yellow-800";
-    case "indexed":
-      return "bg-green-100 text-green-800";
-    case "error":
-      return "bg-red-100 text-red-800";
+    case 'pending':
+      return 'bg-gray-100 text-gray-800'
+    case 'parsing':
+    case 'chunking':
+    case 'embedding':
+      return 'bg-yellow-100 text-yellow-800'
+    case 'indexed':
+      return 'bg-green-100 text-green-800'
+    case 'error':
+      return 'bg-red-100 text-red-800'
     default:
-      return "bg-gray-100 text-gray-800";
+      return 'bg-gray-100 text-gray-800'
   }
 }

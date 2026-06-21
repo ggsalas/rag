@@ -12,7 +12,7 @@ export function useDocuments(libraryId: string) {
       await ingestDocuments(files, libraryId)
       // No refetch needed - useLiveQuery in data hook updates automatically
     },
-    [libraryId]
+    [libraryId],
   )
 
   const deleteDocument = useCallback(async (id: string) => {

@@ -10,7 +10,7 @@ export function getParserWorker(): Remote<ParserWorkerAPI> {
   if (!parserWorker) {
     const worker = new Worker(
       new URL('@/workers/parser.worker.ts', import.meta.url),
-      { type: 'module' }
+      { type: 'module' },
     )
     parserWorker = wrap<ParserWorkerAPI>(worker)
   }
@@ -22,7 +22,7 @@ export function getEmbeddingWorker(): Remote<EmbeddingWorkerAPI> {
   if (!embeddingWorker) {
     const worker = new Worker(
       new URL('@/workers/embedding.worker.ts', import.meta.url),
-      { type: 'module' }
+      { type: 'module' },
     )
     embeddingWorker = wrap<EmbeddingWorkerAPI>(worker)
   }

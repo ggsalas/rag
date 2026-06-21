@@ -1,10 +1,10 @@
-import { Outlet, Link } from "react-router";
-import { useModelStatus } from "@/hooks/useModelStatus";
-import { ModelIndicator } from "@/components/ui/ModelIndicator";
-import { QueueIndicator } from "@/components/ui/QueueIndicator";
+import { Outlet, Link } from 'react-router'
+import { useModelStatus } from '@/hooks/useModelStatus'
+import { ModelIndicator } from '@/components/ui/ModelIndicator'
+import { QueueIndicator } from '@/components/ui/QueueIndicator'
 
 export function RootLayout() {
-  const { modelStatus } = useModelStatus();
+  const { modelStatus } = useModelStatus()
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -23,5 +23,5 @@ export function RootLayout() {
         <Outlet />
       </main>
     </div>
-  );
+  )
 }

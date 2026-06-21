@@ -7,8 +7,8 @@ import { db } from '@/infrastructure/db'
  */
 export function useDocumentData(documentId: string | undefined) {
   const document = useLiveQuery(
-    () => documentId ? db.documents.get(documentId) : undefined,
-    [documentId]
+    () => (documentId ? db.documents.get(documentId) : undefined),
+    [documentId],
   )
 
   return {

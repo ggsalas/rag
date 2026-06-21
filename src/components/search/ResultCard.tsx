@@ -9,7 +9,7 @@ interface ResultCardProps {
 
 export function ResultCard({ result, rank }: ResultCardProps) {
   const { libraryId } = useParams<{ libraryId: string }>()
-  
+
   return (
     <div className="bg-white rounded-lg border border-gray-200 p-4 hover:shadow-md transition-shadow">
       <div className="flex items-start justify-between gap-3 mb-2">

@@ -1,4 +1,10 @@
-export type DocumentStatus = 'pending' | 'parsing' | 'chunking' | 'embedding' | 'indexed' | 'error'
+export type DocumentStatus =
+  | 'pending'
+  | 'parsing'
+  | 'chunking'
+  | 'embedding'
+  | 'indexed'
+  | 'error'
 
 export type DocumentMeta = {
   id: string

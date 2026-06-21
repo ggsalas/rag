@@ -28,7 +28,7 @@ export function useLibraries() {
       await libraryService.createLibrary(name, description)
       await loadLibraries()
     },
-    [loadLibraries]
+    [loadLibraries],
   )
 
   const deleteLibrary = useCallback(
@@ -36,7 +36,7 @@ export function useLibraries() {
       await libraryService.deleteLibrary(id)
       await loadLibraries()
     },
-    [loadLibraries]
+    [loadLibraries],
   )
 
   return {

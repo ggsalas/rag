@@ -8,22 +8,22 @@ Users organize documents into **Libraries**. Each library is an independent coll
 
 ## Tech Stack
 
-| Layer | Technology | Version |
-|-------|------------|---------|
-| UI | React | 19.x |
-| Bundler | Vite | 8.x (Rolldown) |
-| Styles | Tailwind CSS | 4.x (CSS-first, no tailwind.config.js) |
-| Router | React Router | 7.x (single package, replaces react-router-dom) |
-| State | Zustand | 5.x (global state minimum) |
-| Persistence | Dexie.js | 4.x (IndexedDB wrapper) |
-| Vector Search | Orama | 3.x |
-| Embeddings | @huggingface/transformers | 4.x |
-| PDF Parsing | pdfjs-dist | 6.x |
-| DOCX Parsing | mammoth | 1.x |
-| Worker Comms | Comlink | 4.x |
-| Testing | Vitest | 4.x |
-| PWA | vite-plugin-pwa | 1.x |
-| Language | TypeScript | 5.x (strict mode) |
+| Layer         | Technology                | Version                                         |
+| ------------- | ------------------------- | ----------------------------------------------- |
+| UI            | React                     | 19.x                                            |
+| Bundler       | Vite                      | 8.x (Rolldown)                                  |
+| Styles        | Tailwind CSS              | 4.x (CSS-first, no tailwind.config.js)          |
+| Router        | React Router              | 7.x (single package, replaces react-router-dom) |
+| State         | Zustand                   | 5.x (global state minimum)                      |
+| Persistence   | Dexie.js                  | 4.x (IndexedDB wrapper)                         |
+| Vector Search | Orama                     | 3.x                                             |
+| Embeddings    | @huggingface/transformers | 4.x                                             |
+| PDF Parsing   | pdfjs-dist                | 6.x                                             |
+| DOCX Parsing  | mammoth                   | 1.x                                             |
+| Worker Comms  | Comlink                   | 4.x                                             |
+| Testing       | Vitest                    | 4.x                                             |
+| PWA           | vite-plugin-pwa           | 1.x                                             |
+| Language      | TypeScript                | 5.x (strict mode)                               |
 
 ## Directory Structure
 
@@ -77,7 +77,7 @@ Never import against this direction. If you need to, refactor instead.
    - `modelStatus` (embedding model loading state)
    - `processingQueue` (documents being processed)
    - `stats` (global statistics)
-   
+
    The current `libraryId` is derived from route params (`useParams()`), NOT stored in Zustand.
 
 ### Library Scoping
@@ -111,16 +111,16 @@ Library (1)
 
 ## File Naming Conventions
 
-| Type | Pattern | Example |
-|------|---------|---------|
-| React component | `PascalCase.tsx` | `DropZone.tsx` |
-| Service | `kebab-case.service.ts` | `chunking.service.ts` |
-| Hook | `camelCase.ts` with `use` prefix | `useDocuments.ts` |
-| Type file | `kebab-case.ts` | `document.ts` |
-| Test | `*.test.ts` or `*.test.tsx` | `chunking.service.test.ts` |
-| Worker | `kebab-case.worker.ts` | `embedding.worker.ts` |
-| Loader | `kebab-case.loader.ts` | `documents.loader.ts` |
-| Store | `kebab-case.store.ts` | `app.store.ts` |
+| Type            | Pattern                          | Example                    |
+| --------------- | -------------------------------- | -------------------------- |
+| React component | `PascalCase.tsx`                 | `DropZone.tsx`             |
+| Service         | `kebab-case.service.ts`          | `chunking.service.ts`      |
+| Hook            | `camelCase.ts` with `use` prefix | `useDocuments.ts`          |
+| Type file       | `kebab-case.ts`                  | `document.ts`              |
+| Test            | `*.test.ts` or `*.test.tsx`      | `chunking.service.test.ts` |
+| Worker          | `kebab-case.worker.ts`           | `embedding.worker.ts`      |
+| Loader          | `kebab-case.loader.ts`           | `documents.loader.ts`      |
+| Store           | `kebab-case.store.ts`            | `app.store.ts`             |
 
 ## Testing
 
@@ -149,18 +149,26 @@ Library (1)
 - Example:
   ```ts
   /** Processes a document through the complete ingestion pipeline */
-  async function processDocument(docMeta: DocumentMeta, file: File): Promise<void> {
+  async function processDocument(
+    docMeta: DocumentMeta,
+    file: File,
+  ): Promise<void> {
     // Use page-aware chunking if parser extracted page information
-    const chunks = parseResult.pages ? chunkWithPages(pages) : chunkText(text);
+    const chunks = parseResult.pages ? chunkWithPages(pages) : chunkText(text)
   }
   ```
 
 ## Key Patterns
 
 ### Services receive libraryId, they don't know the current route:
+
 ```ts
 // ✅ Correct
-async function search(query: string, libraryId: string, topK?: number): Promise<SearchResult[]>
+async function search(
+  query: string,
+  libraryId: string,
+  topK?: number,
+): Promise<SearchResult[]>
 
 // ❌ Wrong — services must not access router
 async function search(query: string): Promise<SearchResult[]> {
@@ -169,6 +177,7 @@ async function search(query: string): Promise<SearchResult[]> {
 ```
 
 ### Workers are accessed via Comlink proxies:
+
 ```ts
 // infrastructure/worker-pool.ts
 import { wrap, type Remote } from 'comlink'
@@ -179,7 +188,7 @@ export function getParserWorker(): Remote<ParserWorkerAPI> {
   if (!parserWorker) {
     const worker = new Worker(
       new URL('@/workers/parser.worker.ts', import.meta.url),
-      { type: 'module' }
+      { type: 'module' },
     )
     parserWorker = wrap<ParserWorkerAPI>(worker)
   }
@@ -188,6 +197,7 @@ export function getParserWorker(): Remote<ParserWorkerAPI> {
 ```
 
 ### Orama is a derived index, not the source of truth:
+
 ```ts
 // Source of truth: Dexie
 await persistenceService.saveChunks(chunks)
@@ -197,6 +207,7 @@ await vectorStore.insertChunks(libraryId, chunks)
 ```
 
 ### Loaders fetch data before rendering:
+
 ```ts
 // documents.loader.ts
 export async function loader({ params }: LoaderFunctionArgs) {

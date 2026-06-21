@@ -7,7 +7,7 @@ import type { SearchResult } from '@/types/search'
 export async function search(
   query: string,
   libraryId: string,
-  topK?: number
+  topK?: number,
 ): Promise<SearchResult[]> {
   const trimmed = query.trim()
   if (!trimmed) return []
@@ -16,7 +16,11 @@ export async function search(
   const embedding = await embed(trimmed)
 
   // 2. Search Orama index for this library
-  const vectorResults = await searchByVector(libraryId, embedding, topK ?? DEFAULT_TOP_K)
+  const vectorResults = await searchByVector(
+    libraryId,
+    embedding,
+    topK ?? DEFAULT_TOP_K,
+  )
 
   // 3. Map VectorSearchResult → SearchResult (same shape, explicit mapping for type safety)
   return vectorResults.map((r) => ({

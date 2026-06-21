@@ -31,7 +31,8 @@ describe('chunking.service', () => {
     })
 
     it('should assign sequential chunkIndex', () => {
-      const text = 'paragraph one.\n\nparagraph two.\n\nparagraph three.\n\nparagraph four.'
+      const text =
+        'paragraph one.\n\nparagraph two.\n\nparagraph three.\n\nparagraph four.'
       const chunks = chunkText(text, { size: 30, overlap: 5 })
       for (let i = 0; i < chunks.length; i++) {
         expect(chunks[i]!.chunkIndex).toBe(i)

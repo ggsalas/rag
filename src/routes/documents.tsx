@@ -7,7 +7,9 @@ import { useAppStore } from '@/store/app.store'
 
 export function DocumentsPage() {
   const { libraryId } = useParams<{ libraryId: string }>()
-  const { documents, loading, uploadFiles, deleteDocument } = useDocuments(libraryId!)
+  const { documents, loading, uploadFiles, deleteDocument } = useDocuments(
+    libraryId!,
+  )
   const modelStatus = useAppStore((s) => s.modelStatus)
 
   const handleFiles = (files: File[]) => {
@@ -24,14 +26,12 @@ export function DocumentsPage() {
 
   return (
     <div>
-      <DropZone
-        onFiles={handleFiles}
-        disabled={modelStatus === 'loading'}
-      />
+      <DropZone onFiles={handleFiles} disabled={modelStatus === 'loading'} />
 
       {modelStatus === 'loading' && (
         <p className="mt-2 text-sm text-yellow-600">
-          Loading embedding model... Documents can be uploaded once the model is ready.
+          Loading embedding model... Documents can be uploaded once the model is
+          ready.
         </p>
       )}
 

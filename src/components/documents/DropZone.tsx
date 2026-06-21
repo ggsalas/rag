@@ -21,7 +21,9 @@ export function DropZone({ onFiles, disabled = false }: DropZoneProps) {
 
   const isValidFile = (file: File): boolean => {
     if (ACCEPTED_TYPES.includes(file.type)) return true
-    return ACCEPTED_EXTENSIONS.some((ext) => file.name.toLowerCase().endsWith(ext))
+    return ACCEPTED_EXTENSIONS.some((ext) =>
+      file.name.toLowerCase().endsWith(ext),
+    )
   }
 
   const handleFiles = useCallback(
@@ -30,7 +32,7 @@ export function DropZone({ onFiles, disabled = false }: DropZoneProps) {
       const valid = Array.from(fileList).filter(isValidFile)
       if (valid.length > 0) onFiles(valid)
     },
-    [onFiles, disabled]
+    [onFiles, disabled],
   )
 
   const handleDragOver = (e: DragEvent) => {

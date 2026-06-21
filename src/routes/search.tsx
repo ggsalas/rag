@@ -15,8 +15,13 @@ interface SearchContext {
 }
 
 export function SearchPage() {
-  const { searchResults, isSearching, searchError, hasSearched, performSearch } = 
-    useOutletContext<SearchContext>()
+  const {
+    searchResults,
+    isSearching,
+    searchError,
+    hasSearched,
+    performSearch,
+  } = useOutletContext<SearchContext>()
   const modelStatus = useAppStore((s) => s.modelStatus)
 
   return (

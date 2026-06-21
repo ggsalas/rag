@@ -10,7 +10,7 @@ export function useProcessingCountData(): number {
     db.documents
       .where('status')
       .anyOf(['pending', 'parsing', 'chunking', 'embedding'])
-      .count()
+      .count(),
   )
 
   return count ?? 0

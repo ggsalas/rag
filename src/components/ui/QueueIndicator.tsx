@@ -1,9 +1,9 @@
-import { useProcessingCountData } from "@/hooks/data/useProcessingCountData";
+import { useProcessingCountData } from '@/hooks/data/useProcessingCountData'
 
 export function QueueIndicator() {
-  const processingDocs = useProcessingCountData();
+  const processingDocs = useProcessingCountData()
 
-  if (!processingDocs) return null;
+  if (!processingDocs) return null
 
   return (
     <div className="flex items-center gap-2 text-sm text-gray-600">
@@ -27,8 +27,8 @@ export function QueueIndicator() {
         />
       </svg>
       <span>
-        Processing {processingDocs} document{processingDocs !== 1 ? "s" : ""}
+        Processing {processingDocs} document{processingDocs !== 1 ? 's' : ''}
       </span>
     </div>
-  );
+  )
 }

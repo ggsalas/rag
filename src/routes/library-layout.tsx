@@ -1,5 +1,11 @@
 import { useEffect, useState, useCallback } from 'react'
-import { Outlet, NavLink, useParams, useNavigate, useLocation } from 'react-router'
+import {
+  Outlet,
+  NavLink,
+  useParams,
+  useNavigate,
+  useLocation,
+} from 'react-router'
 import { useLibrary } from '@/hooks/useLibrary'
 import { hasIndex, rebuildIndex } from '@/services/embedding/vector-store'
 import { search as searchService } from '@/services/search/search.service'
@@ -13,13 +19,16 @@ interface OpenDocument {
 }
 
 export function LibraryLayout() {
-  const { libraryId, documentId } = useParams<{ libraryId: string; documentId: string }>()
+  const { libraryId, documentId } = useParams<{
+    libraryId: string
+    documentId: string
+  }>()
   const { library, loading } = useLibrary(libraryId!)
   const navigate = useNavigate()
   const location = useLocation()
-  
+
   const [openDocuments, setOpenDocuments] = useState<OpenDocument[]>([])
-  const [searchQuery, setSearchQuery] = useState("")
+  const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<SearchResult[]>([])
   const [isSearching, setIsSearching] = useState(false)
   const [searchError, setSearchError] = useState<string | null>(null)
@@ -27,10 +36,10 @@ export function LibraryLayout() {
 
   // Track open document tabs using data hook
   const { document: currentDoc } = useDocumentData(documentId)
-  
+
   useEffect(() => {
     if (!currentDoc) return
-    
+
     setOpenDocuments((prev) => {
       const alreadyOpen = prev.some((d) => d.id === currentDoc.id)
       if (alreadyOpen) return prev
@@ -38,13 +47,16 @@ export function LibraryLayout() {
     })
   }, [currentDoc])
 
-  const closeDocumentTab = useCallback((docId: string) => {
-    setOpenDocuments((prev) => prev.filter((d) => d.id !== docId))
-    // If closing the currently viewed document, navigate to documents list
-    if (documentId === docId) {
-      navigate(`/libraries/${libraryId}/documents`)
-    }
-  }, [documentId, libraryId, navigate])
+  const closeDocumentTab = useCallback(
+    (docId: string) => {
+      setOpenDocuments((prev) => prev.filter((d) => d.id !== docId))
+      // If closing the currently viewed document, navigate to documents list
+      if (documentId === docId) {
+        navigate(`/libraries/${libraryId}/documents`)
+      }
+    },
+    [documentId, libraryId, navigate],
+  )
 
   const performSearch = useCallback(
     async (query: string) => {
@@ -66,18 +78,18 @@ export function LibraryLayout() {
         setSearchResults(results)
         setHasSearched(true)
       } catch (err) {
-        setSearchError(err instanceof Error ? err.message : "Search failed")
+        setSearchError(err instanceof Error ? err.message : 'Search failed')
         setSearchResults([])
         setHasSearched(true)
       } finally {
         setIsSearching(false)
       }
     },
-    [libraryId]
+    [libraryId],
   )
 
   const clearSearch = useCallback(() => {
-    setSearchQuery("")
+    setSearchQuery('')
     setSearchResults([])
     setSearchError(null)
     setHasSearched(false)
@@ -159,15 +171,17 @@ export function LibraryLayout() {
           ))}
         </nav>
       </div>
-      <Outlet context={{ 
-        searchQuery, 
-        searchResults, 
-        isSearching, 
-        searchError, 
-        hasSearched, 
-        performSearch, 
-        clearSearch 
-      }} />
+      <Outlet
+        context={{
+          searchQuery,
+          searchResults,
+          isSearching,
+          searchError,
+          hasSearched,
+          performSearch,
+          clearSearch,
+        }}
+      />
     </div>
   )
 }

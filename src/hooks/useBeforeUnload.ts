@@ -3,7 +3,7 @@ import { useEffect } from 'react'
 /**
  * Hook to warn the user before leaving the page when a condition is met.
  * Typically used to prevent accidental data loss during async operations.
- * 
+ *
  * @param shouldWarn - Whether to show the warning dialog
  * @param message - Optional custom message (most browsers ignore this and show their own)
  */

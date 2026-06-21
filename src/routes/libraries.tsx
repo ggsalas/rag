@@ -13,9 +13,7 @@ export function LibrariesPage() {
     <div>
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-2xl font-bold text-gray-900">Libraries</h1>
-        <Button onClick={() => setShowCreateModal(true)}>
-          New Library
-        </Button>
+        <Button onClick={() => setShowCreateModal(true)}>New Library</Button>
       </div>
 
       {loading ? (

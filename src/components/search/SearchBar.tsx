@@ -8,7 +8,12 @@ interface SearchBarProps {
   initialQuery?: string
 }
 
-export function SearchBar({ onSearch, isSearching, modelStatus, initialQuery = '' }: SearchBarProps) {
+export function SearchBar({
+  onSearch,
+  isSearching,
+  modelStatus,
+  initialQuery = '',
+}: SearchBarProps) {
   const [inputValue, setInputValue] = useState(initialQuery)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -32,7 +37,7 @@ export function SearchBar({ onSearch, isSearching, modelStatus, initialQuery = '
         onSearch(value)
       }, 300)
     },
-    [onSearch]
+    [onSearch],
   )
 
   const handleChange = (value: string) => {
@@ -113,7 +118,8 @@ export function SearchBar({ onSearch, isSearching, modelStatus, initialQuery = '
       {/* Model status message */}
       {modelStatus === 'loading' && (
         <p className="mt-2 text-sm text-yellow-600">
-          Loading embedding model... Search will be available once the model is ready.
+          Loading embedding model... Search will be available once the model is
+          ready.
         </p>
       )}
       {modelStatus === 'error' && (

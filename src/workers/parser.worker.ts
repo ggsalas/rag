@@ -5,7 +5,7 @@ import { extractRawText } from 'mammoth'
 // Configure pdfjs worker
 GlobalWorkerOptions.workerSrc = new URL(
   'pdfjs-dist/build/pdf.worker.min.mjs',
-  import.meta.url
+  import.meta.url,
 ).toString()
 
 export interface ParseResult {
@@ -13,10 +13,16 @@ export interface ParseResult {
   pages?: string[] // only for PDF
 }
 
-export type ParseProgressCallback = (current: number, total: number) => void | Promise<void>
+export type ParseProgressCallback = (
+  current: number,
+  total: number,
+) => void | Promise<void>
 
 export interface ParserWorkerAPI {
-  parsePdf(buffer: ArrayBuffer, onProgress?: ParseProgressCallback): Promise<ParseResult>
+  parsePdf(
+    buffer: ArrayBuffer,
+    onProgress?: ParseProgressCallback,
+  ): Promise<ParseResult>
   parseDocx(buffer: ArrayBuffer): Promise<ParseResult>
   parseText(text: string): Promise<ParseResult>
 }
@@ -24,7 +30,7 @@ export interface ParserWorkerAPI {
 /** Parses a PDF file and extracts text content with page information */
 async function parsePdf(
   buffer: ArrayBuffer,
-  onProgress?: ParseProgressCallback
+  onProgress?: ParseProgressCallback,
 ): Promise<ParseResult> {
   const doc = await getDocument({ data: buffer }).promise
   const pages: string[] = []

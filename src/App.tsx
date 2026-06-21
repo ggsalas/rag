@@ -17,11 +17,11 @@ const router = createBrowserRouter([
     children: [
       {
         index: true,
-        element: <Navigate to="/libraries" replace />
+        element: <Navigate to="/libraries" replace />,
       },
       {
         path: 'libraries',
-        element: <LibrariesPage />
+        element: <LibrariesPage />,
       },
       {
         path: 'libraries/:libraryId',
@@ -29,24 +29,24 @@ const router = createBrowserRouter([
         children: [
           {
             index: true,
-            element: <Navigate to="documents" replace />
+            element: <Navigate to="documents" replace />,
           },
           {
             path: 'documents',
-            element: <DocumentsPage />
+            element: <DocumentsPage />,
           },
           {
             path: 'documents/:documentId',
-            element: <DocumentViewerPage />
+            element: <DocumentViewerPage />,
           },
           {
             path: 'search',
-            element: <SearchPage />
-          }
-        ]
-      }
-    ]
-  }
+            element: <SearchPage />,
+          },
+        ],
+      },
+    ],
+  },
 ])
 
 export function App() {
@@ -55,7 +55,7 @@ export function App() {
   // Warn user before leaving if documents are being processed
   useBeforeUnload(
     hasProcessingDocuments,
-    'Documents are still being processed. If you leave now, processing will be cancelled.'
+    'Documents are still being processed. If you leave now, processing will be cancelled.',
   )
 
   useEffect(() => {
@@ -64,7 +64,9 @@ export function App() {
     cleanupInterruptedDocuments()
       .then((count) => {
         if (count > 0) {
-          console.log(`Cleaned up ${count} interrupted document(s) from previous session`)
+          console.log(
+            `Cleaned up ${count} interrupted document(s) from previous session`,
+          )
         }
       })
       .catch((error) => {

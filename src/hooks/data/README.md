@@ -19,12 +19,14 @@ types → lib → infrastructure → services → data-hooks → hooks → compo
 ## Rules
 
 ### ✅ Allowed in data hooks
+
 - Import `db` from `@/infrastructure/db`
 - Use `useLiveQuery` for reactive queries
 - Simple read-only queries (filtering, sorting, counting)
 - Return data + loading state
 
 ### ❌ Forbidden in data hooks
+
 - Business logic (use business hooks in `hooks/`)
 - Write operations like create/update/delete (use services)
 - Side effects (navigation, toasts, API calls)
@@ -33,6 +35,7 @@ types → lib → infrastructure → services → data-hooks → hooks → compo
 ## Naming Convention
 
 `use[Entity]Data.ts` - e.g.:
+
 - `useDocumentsData.ts`
 - `useLibrariesData.ts`
 - `useProcessingCountData.ts`
@@ -52,12 +55,13 @@ import type { DocumentMeta } from '@/types/document'
  */
 export function useDocumentsData(libraryId: string) {
   const documents = useLiveQuery(
-    () => db.documents
-      .where('libraryId')
-      .equals(libraryId)
-      .reverse()
-      .sortBy('createdAt'),
-    [libraryId]
+    () =>
+      db.documents
+        .where('libraryId')
+        .equals(libraryId)
+        .reverse()
+        .sortBy('createdAt'),
+    [libraryId],
   )
 
   return {
@@ -75,13 +79,13 @@ import { useDocumentsData } from './data/useDocumentsData'
 import * as documentService from '@/services/document.service'
 
 export function useDocuments(libraryId: string) {
-  const { documents, loading } = useDocumentsData(libraryId)  // ✅ Reactive data
-  
+  const { documents, loading } = useDocumentsData(libraryId) // ✅ Reactive data
+
   const deleteDocument = async (id: string) => {
     await documentService.deleteDocument(id)
     // No refetch needed - useLiveQuery updates automatically
   }
-  
+
   return { documents, loading, deleteDocument }
 }
 ```
@@ -115,7 +119,7 @@ vi.mock('@/hooks/data/useDocumentsData', () => ({
   useDocumentsData: () => ({
     documents: mockDocuments,
     loading: false,
-  })
+  }),
 }))
 ```
 

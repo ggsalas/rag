@@ -3,7 +3,10 @@ import { generateId } from '@/lib/utils'
 import type { Library } from '@/types/library'
 
 /** Creates a new library in the database */
-export async function createLibrary(name: string, description?: string): Promise<Library> {
+export async function createLibrary(
+  name: string,
+  description?: string,
+): Promise<Library> {
   const now = Date.now()
   const library: Library = {
     id: generateId(),
@@ -31,7 +34,7 @@ export async function getLibraryById(id: string): Promise<Library | undefined> {
 /** Updates a library's name and/or description */
 export async function updateLibrary(
   id: string,
-  updates: Partial<Pick<Library, 'name' | 'description'>>
+  updates: Partial<Pick<Library, 'name' | 'description'>>,
 ): Promise<void> {
   await db.libraries.update(id, {
     ...updates,

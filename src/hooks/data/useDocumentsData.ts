@@ -8,12 +8,13 @@ import { db } from '@/infrastructure/db'
  */
 export function useDocumentsData(libraryId: string) {
   const documents = useLiveQuery(
-    () => db.documents
-      .where('libraryId')
-      .equals(libraryId)
-      .reverse()
-      .sortBy('createdAt'),
-    [libraryId]
+    () =>
+      db.documents
+        .where('libraryId')
+        .equals(libraryId)
+        .reverse()
+        .sortBy('createdAt'),
+    [libraryId],
   )
 
   return {
