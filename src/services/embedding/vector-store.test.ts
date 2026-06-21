@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import {
   insertChunks,
   searchByVector,
+  searchHybrid,
   rebuildIndex,
   removeIndex,
   hasIndex,
@@ -75,5 +76,37 @@ describe('vector-store', () => {
     const queryVector = Array(384).fill(0.1)
     const results = await searchByVector('lib-1', queryVector, 10)
     expect(results.every((r) => r.documentId !== 'doc-1')).toBe(true)
+  })
+
+  it('should perform hybrid search with default weights', async () => {
+    const chunk = makeChunk({ text: 'machine learning models' })
+    await insertChunks('lib-1', [chunk])
+
+    const queryVector = Array(384).fill(0.1)
+    const results = await searchHybrid('lib-1', 'machine', queryVector, 5)
+
+    expect(results.length).toBeGreaterThan(0)
+    expect(results[0]!.documentId).toBe('doc-1')
+    expect(results[0]!.score).toBeGreaterThan(0)
+  })
+
+  it('should perform hybrid search with custom weights', async () => {
+    const chunk = makeChunk({ text: 'deep neural networks' })
+    await insertChunks('lib-1', [chunk])
+
+    const queryVector = Array(384).fill(0.1)
+    const results = await searchHybrid('lib-1', 'neural', queryVector, 5, {
+      text: 0.7,
+      vector: 0.3,
+    })
+
+    expect(results.length).toBeGreaterThan(0)
+    expect(results[0]!.text).toBe('deep neural networks')
+  })
+
+  it('should return empty array for hybrid search on non-existent index', async () => {
+    const queryVector = Array(384).fill(0.1)
+    const results = await searchHybrid('non-existent', 'test', queryVector)
+    expect(results).toEqual([])
   })
 })

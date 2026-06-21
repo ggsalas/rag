@@ -9,13 +9,14 @@ vi.mock('@/services/embedding/embedding.service', () => ({
 // Mock the vector store
 vi.mock('@/services/embedding/vector-store', () => ({
   searchByVector: vi.fn(),
+  searchHybrid: vi.fn(),
 }))
 
 import { embed } from '@/services/embedding/embedding.service'
-import { searchByVector } from '@/services/embedding/vector-store'
+import { searchHybrid } from '@/services/embedding/vector-store'
 
 const mockEmbed = vi.mocked(embed)
-const mockSearchByVector = vi.mocked(searchByVector)
+const mockSearchHybrid = vi.mocked(searchHybrid)
 
 describe('search.service', () => {
   beforeEach(() => {
@@ -34,10 +35,10 @@ describe('search.service', () => {
     expect(mockEmbed).not.toHaveBeenCalled()
   })
 
-  it('should embed query and search vector store', async () => {
+  it('should embed query and perform hybrid search', async () => {
     const fakeEmbedding = Array(384).fill(0.1)
     mockEmbed.mockResolvedValue(fakeEmbedding)
-    mockSearchByVector.mockResolvedValue([
+    mockSearchHybrid.mockResolvedValue([
       {
         chunkId: 'chunk-1',
         documentId: 'doc-1',
@@ -52,36 +53,55 @@ describe('search.service', () => {
     const results = await search('test query', 'lib-1')
 
     expect(mockEmbed).toHaveBeenCalledWith('test query')
-    expect(mockSearchByVector).toHaveBeenCalledWith('lib-1', fakeEmbedding, 5)
+    expect(mockSearchHybrid).toHaveBeenCalledWith(
+      'lib-1',
+      'test query',
+      fakeEmbedding,
+      5,
+      undefined,
+    )
     expect(results).toHaveLength(1)
     expect(results[0]!.documentName).toBe('test.pdf')
     expect(results[0]!.score).toBe(0.95)
   })
 
-  it('should pass custom topK to vector store', async () => {
+  it('should pass custom topK to hybrid search', async () => {
     const fakeEmbedding = Array(384).fill(0.1)
     mockEmbed.mockResolvedValue(fakeEmbedding)
-    mockSearchByVector.mockResolvedValue([])
+    mockSearchHybrid.mockResolvedValue([])
 
     await search('query', 'lib-1', 10)
 
-    expect(mockSearchByVector).toHaveBeenCalledWith('lib-1', fakeEmbedding, 10)
+    expect(mockSearchHybrid).toHaveBeenCalledWith(
+      'lib-1',
+      'query',
+      fakeEmbedding,
+      10,
+      undefined,
+    )
   })
 
   it('should trim query before embedding', async () => {
     const fakeEmbedding = Array(384).fill(0.1)
     mockEmbed.mockResolvedValue(fakeEmbedding)
-    mockSearchByVector.mockResolvedValue([])
+    mockSearchHybrid.mockResolvedValue([])
 
     await search('  hello world  ', 'lib-1')
 
     expect(mockEmbed).toHaveBeenCalledWith('hello world')
+    expect(mockSearchHybrid).toHaveBeenCalledWith(
+      'lib-1',
+      'hello world',
+      fakeEmbedding,
+      5,
+      undefined,
+    )
   })
 
   it('should return results with correct SearchResult shape', async () => {
     const fakeEmbedding = Array(384).fill(0.1)
     mockEmbed.mockResolvedValue(fakeEmbedding)
-    mockSearchByVector.mockResolvedValue([
+    mockSearchHybrid.mockResolvedValue([
       {
         chunkId: 'c-1',
         documentId: 'd-1',
@@ -104,5 +124,22 @@ describe('search.service', () => {
       page: undefined,
       chunkIndex: 2,
     })
+  })
+
+  it('should pass custom weights to hybrid search', async () => {
+    const fakeEmbedding = Array(384).fill(0.1)
+    mockEmbed.mockResolvedValue(fakeEmbedding)
+    mockSearchHybrid.mockResolvedValue([])
+
+    const customWeights = { text: 0.3, vector: 0.7 }
+    await search('query', 'lib-1', undefined, customWeights)
+
+    expect(mockSearchHybrid).toHaveBeenCalledWith(
+      'lib-1',
+      'query',
+      fakeEmbedding,
+      5,
+      customWeights,
+    )
   })
 })

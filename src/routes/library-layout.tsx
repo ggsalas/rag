@@ -11,7 +11,7 @@ import { hasIndex, rebuildIndex } from '@/services/embedding/vector-store'
 import { search as searchService } from '@/services/search/search.service'
 import { getChunksByLibrary } from '@/services/chunk.service'
 import { useDocumentData } from '@/hooks/data/useDocumentData'
-import type { SearchResult } from '@/types/search'
+import type { SearchResult, HybridWeights } from '@/types/search'
 
 interface OpenDocument {
   id: string
@@ -33,6 +33,10 @@ export function LibraryLayout() {
   const [isSearching, setIsSearching] = useState(false)
   const [searchError, setSearchError] = useState<string | null>(null)
   const [hasSearched, setHasSearched] = useState(false)
+  const [hybridWeights, setHybridWeights] = useState<HybridWeights>({
+    text: 0.5,
+    vector: 0.5,
+  })
 
   // Track open document tabs using data hook
   const { document: currentDoc } = useDocumentData(documentId)
@@ -74,7 +78,12 @@ export function LibraryLayout() {
       setSearchError(null)
 
       try {
-        const results = await searchService(trimmed, libraryId!)
+        const results = await searchService(
+          trimmed,
+          libraryId!,
+          undefined,
+          hybridWeights,
+        )
         setSearchResults(results)
         setHasSearched(true)
       } catch (err) {
@@ -85,7 +94,7 @@ export function LibraryLayout() {
         setIsSearching(false)
       }
     },
-    [libraryId],
+    [libraryId, hybridWeights],
   )
 
   const clearSearch = useCallback(() => {
@@ -94,6 +103,14 @@ export function LibraryLayout() {
     setSearchError(null)
     setHasSearched(false)
   }, [])
+
+  // Re-run search when hybrid weights change (if there's an active query)
+  useEffect(() => {
+    if (searchQuery.trim() && hasSearched) {
+      performSearch(searchQuery)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hybridWeights])
 
   // Rehydrate Orama index if not in memory
   useEffect(() => {
@@ -180,6 +197,8 @@ export function LibraryLayout() {
           hasSearched,
           performSearch,
           clearSearch,
+          hybridWeights,
+          setHybridWeights,
         }}
       />
     </div>

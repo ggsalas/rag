@@ -3,6 +3,11 @@ export type SearchQuery = {
   topK: number
 }
 
+export type HybridWeights = {
+  text: number
+  vector: number
+}
+
 export type SearchResult = {
   chunkId: string
   documentId: string

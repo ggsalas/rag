@@ -1,5 +1,6 @@
 import { create, insert, search, remove, type AnyOrama } from '@orama/orama'
 import type { Chunk } from '@/types/document'
+import type { HybridWeights } from '@/types/search'
 import { EMBEDDING_DIMENSIONS, DEFAULT_TOP_K } from '@/lib/constants'
 
 export interface VectorSearchResult {
@@ -55,6 +56,42 @@ export async function insertChunks(
       chunkIndex: chunk.chunkIndex,
     })
   }
+}
+
+/** Performs hybrid search (BM25 + vector) within a library's index */
+export async function searchHybrid(
+  libraryId: string,
+  term: string,
+  embedding: number[],
+  topK?: number,
+  weights?: HybridWeights,
+): Promise<VectorSearchResult[]> {
+  const index = indexes.get(libraryId)
+  if (!index) return []
+
+  const results = await search(index, {
+    mode: 'hybrid',
+    term,
+    vector: { value: embedding, property: 'embedding' },
+    properties: ['text'],
+    limit: topK ?? DEFAULT_TOP_K,
+    includeVectors: false,
+    similarity: 0.0,
+    hybridWeights: weights ?? { text: 0.5, vector: 0.5 },
+  })
+
+  return results.hits.map((hit) => {
+    const page = hit.document.page as number
+    return {
+      chunkId: hit.document.chunkId as string,
+      documentId: hit.document.documentId as string,
+      documentName: hit.document.documentName as string,
+      text: hit.document.text as string,
+      score: hit.score,
+      page: page === 0 ? undefined : page,
+      chunkIndex: hit.document.chunkIndex as number,
+    }
+  })
 }
 
 /** Performs vector similarity search within a library's index */

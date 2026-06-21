@@ -2,7 +2,8 @@ import { useOutletContext } from 'react-router'
 import { useAppStore } from '@/store/app.store'
 import { SearchBar } from '@/components/search/SearchBar'
 import { ResultList } from '@/components/search/ResultList'
-import type { SearchResult } from '@/types/search'
+import { HybridWeightsControl } from '@/components/search/HybridWeightsControl'
+import type { SearchResult, HybridWeights } from '@/types/search'
 
 interface SearchContext {
   searchQuery: string
@@ -12,6 +13,8 @@ interface SearchContext {
   hasSearched: boolean
   performSearch: (query: string) => Promise<void>
   clearSearch: () => void
+  hybridWeights: HybridWeights
+  setHybridWeights: (weights: HybridWeights) => void
 }
 
 export function SearchPage() {
@@ -21,6 +24,8 @@ export function SearchPage() {
     searchError,
     hasSearched,
     performSearch,
+    hybridWeights,
+    setHybridWeights,
   } = useOutletContext<SearchContext>()
   const modelStatus = useAppStore((s) => s.modelStatus)
 
@@ -31,6 +36,14 @@ export function SearchPage() {
         isSearching={isSearching}
         modelStatus={modelStatus}
       />
+
+      <div className="mt-4">
+        <HybridWeightsControl
+          weights={hybridWeights}
+          onChange={setHybridWeights}
+          disabled={isSearching || modelStatus !== 'ready'}
+        />
+      </div>
 
       <div className="mt-6">
         <ResultList
