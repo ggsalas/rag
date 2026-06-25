@@ -12,7 +12,8 @@ import { useProcessingDocuments } from '@/hooks/useProcessingDocuments'
 import { useModelStatus } from '@/hooks/useModelStatus'
 import { useProcessingNotifications } from '@/hooks/useProcessingNotifications'
 
-const router = createBrowserRouter([
+const router = createBrowserRouter(
+  [
   {
     path: '/',
     element: <SidebarLayout />,
@@ -43,7 +44,9 @@ const router = createBrowserRouter([
       },
     ],
   },
-])
+  ],
+  { basename: import.meta.env.BASE_URL },
+)
 
 export function App() {
   const hasProcessingDocuments = useProcessingDocuments()
