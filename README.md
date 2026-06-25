@@ -1,3 +1,10 @@
+# RAG
+
+<div align="center">
+  <img src="public/icons/icon.svg" alt="RAG logo" width="80" />
+  <p><a href="https://ggsalas.github.io/rag/">https://ggsalas.github.io/rag/</a></p>
+</div>
+
 A privacy-first PWA for semantic document search that runs 100% in the browser. No backend, no data collection—everything stays on your device.
 
 ## Architecture Overview
