@@ -13,9 +13,10 @@ const ACCEPTED_EXTENSIONS = ['.pdf', '.docx', '.txt', '.md']
 interface DropZoneProps {
   onFiles: (files: File[]) => void
   disabled?: boolean
+  className?: string
 }
 
-export function DropZone({ onFiles, disabled = false }: DropZoneProps) {
+export function DropZone({ onFiles, disabled = false, className }: DropZoneProps) {
   const [isDragOver, setIsDragOver] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -57,9 +58,10 @@ export function DropZone({ onFiles, disabled = false }: DropZoneProps) {
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
       className={`
-        border-2 border-dashed rounded-lg p-8 text-center transition-colors
+        border-2 border-dashed rounded-lg p-8 text-center transition-colors flex flex-col items-center justify-center
         ${isDragOver ? 'border-blue-500 bg-blue-50' : 'border-gray-300 hover:border-gray-400'}
         ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
+        ${className ?? ''}
       `}
       onClick={() => !disabled && inputRef.current?.click()}
     >

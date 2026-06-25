@@ -1,6 +1,6 @@
 import { generateId } from '@/lib/utils'
 import { parseFile } from './parser.service'
-import { chunkText, chunkTextWithPages } from './chunking.service'
+import { chunkText, chunkTextWithPages, chunkMarkdown } from './chunking.service'
 import { embedBatch } from '@/services/embedding/embedding.service'
 import { insertChunks } from '@/services/embedding/vector-store'
 import { db } from '@/infrastructure/db'
@@ -71,10 +71,12 @@ async function processDocument(
     await updateDocumentStatus(docMeta.id, 'chunking')
     await updateProgress(docMeta.id, PROGRESS.CHUNKING[0])
 
-    // Use page-aware chunking if the parser extracted page information
+    const isMarkdown = docMeta.name.endsWith('.md') || docMeta.name.endsWith('.markdown')
     const chunkDataList = parseResult.pages
       ? chunkTextWithPages(parseResult.pages)
-      : chunkText(parseResult.text)
+      : isMarkdown
+        ? chunkMarkdown(parseResult.text)
+        : chunkText(parseResult.text)
 
     if (chunkDataList.length === 0) {
       throw new Error('No text could be extracted from document')

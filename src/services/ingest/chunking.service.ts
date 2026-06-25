@@ -114,6 +114,46 @@ export function chunkTextWithPages(
   return chunks
 }
 
+/**
+ * Chunks markdown by heading sections. Each heading + its content becomes a chunk.
+ * Sections that exceed the size limit are split further by paragraph.
+ */
+export function chunkMarkdown(text: string, options?: ChunkOptions): ChunkData[] {
+  const size = options?.size ?? CHUNK_SIZE
+  const overlap = options?.overlap ?? CHUNK_OVERLAP
+  const chunks: ChunkData[] = []
+  let chunkIndex = 0
+
+  // Split into sections, keeping each heading attached to its content
+  const parts = text.split(/^(#{1,6} .+)$/m)
+  const sections: string[] = []
+
+  if (parts[0]?.trim()) sections.push(parts[0].trim())
+
+  for (let i = 1; i < parts.length; i += 2) {
+    const section = ((parts[i] ?? '') + '\n' + (parts[i + 1] ?? '')).trim()
+    if (section) sections.push(section)
+  }
+
+  for (const section of sections) {
+    if (!section.trim()) continue
+
+    if (section.length <= size) {
+      chunks.push({ text: section, chunkIndex })
+      chunkIndex++
+    } else {
+      // Section too long — fall back to paragraph chunking within the section
+      const subChunks = chunkText(section, { size, overlap })
+      for (const sub of subChunks) {
+        chunks.push({ text: sub.text, chunkIndex })
+        chunkIndex++
+      }
+    }
+  }
+
+  return chunks
+}
+
 /** Finds an appropriate break point in text to avoid splitting mid-sentence */
 function findBreakPoint(text: string, maxLength: number): number {
   // Look for sentence boundary before the limit
