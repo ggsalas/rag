@@ -20,7 +20,7 @@ export function DocumentViewerPage() {
     libraryId: string
     documentId: string
   }>()
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const location = useLocation()
   const navigate = useNavigate()
   const [content, setContent] = useState<DocumentContent | null>(null)
@@ -39,11 +39,21 @@ export function DocumentViewerPage() {
     ? parseInt(searchParams.get('chunk')!, 10)
     : null
 
+  const navigateToChunk = (index: number) => {
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev)
+        next.set('chunk', String(index))
+        return next
+      },
+      { replace: true, state: location.state },
+    )
+  }
+
   // Load chunk text for highlighting using data hook
   const { chunk } = useChunkData(libraryId, documentId, highlightChunkIndex)
   const chunkText = chunk?.text ?? null
 
-  debugger
   useEffect(() => {
     async function loadDocument() {
       if (!documentId) return
@@ -80,10 +90,7 @@ export function DocumentViewerPage() {
   // Scroll to highlighted chunk after render
   useEffect(() => {
     if (!isLoading && highlightRef.current) {
-      highlightRef.current.scrollIntoView({
-        behavior: 'smooth',
-        block: 'center',
-      })
+      scrollToCenter(highlightRef.current, 200)
     }
   }, [isLoading, chunkText])
 
@@ -144,6 +151,11 @@ export function DocumentViewerPage() {
     ? `/libraries/${libraryId}/search?q=${encodeURIComponent(searchQuery)}`
     : `/libraries/${libraryId}/search`
 
+  const backToSearchState = {
+    searchQuery,
+    focusedChunkId: chunk?.id ?? null,
+  }
+
   // Status badge color based on document status
   const statusColor = {
     pending: 'bg-yellow-100 text-yellow-800',
@@ -164,7 +176,7 @@ export function DocumentViewerPage() {
             <div className="flex items-center justify-between mb-3">
               <Link
                 to={backToSearchUrl}
-                state={{ searchQuery }}
+                state={backToSearchState}
                 className="inline-flex items-center text-sm text-blue-600 hover:text-blue-800"
               >
                 ← Back to search
@@ -207,6 +219,35 @@ export function DocumentViewerPage() {
               <span>Size: {(document.size / 1024).toFixed(2)} KB</span>
               <span>•</span>
               <span>Chunks: {document.chunkCount}</span>
+              <div className="flex items-center gap-1 ml-1">
+                <button
+                  onClick={() =>
+                    navigateToChunk(highlightChunkIndex! - 1)
+                  }
+                  disabled={
+                    highlightChunkIndex === null || highlightChunkIndex <= 0
+                  }
+                  className="w-6 h-6 flex items-center justify-center rounded text-gray-500 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                  title="Previous chunk"
+                >
+                  ↑
+                </button>
+                <button
+                  onClick={() =>
+                    navigateToChunk(
+                      highlightChunkIndex === null ? 0 : highlightChunkIndex + 1,
+                    )
+                  }
+                  disabled={
+                    highlightChunkIndex !== null &&
+                    highlightChunkIndex >= document.chunkCount - 1
+                  }
+                  className="w-6 h-6 flex items-center justify-center rounded text-gray-500 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                  title="Next chunk"
+                >
+                  ↓
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -236,6 +277,32 @@ export function DocumentViewerPage() {
       </div>
     </MainPanel>
   )
+}
+
+function scrollToCenter(element: HTMLElement, duration: number) {
+  const container = element.closest('.overflow-y-auto') as HTMLElement | null
+  if (!container) return
+
+  const containerRect = container.getBoundingClientRect()
+  const elementRect = element.getBoundingClientRect()
+  const target =
+    container.scrollTop +
+    (elementRect.top - containerRect.top) -
+    (containerRect.height - elementRect.height) / 2
+
+  const start = container.scrollTop
+  const distance = target - start
+  const startTime = performance.now()
+
+  const ease = (t: number) => (t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t)
+
+  const step = (now: number) => {
+    const progress = Math.min((now - startTime) / duration, 1)
+    container.scrollTop = start + distance * ease(progress)
+    if (progress < 1) requestAnimationFrame(step)
+  }
+
+  requestAnimationFrame(step)
 }
 
 interface HighlightedTextProps {

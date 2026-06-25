@@ -37,27 +37,31 @@ export function LibraryAccordionItem({
         </div>
       </div>
 
-      {isExpanded && (
-        <div className="bg-gray-50">
-          {loading && (
-            <div className="px-3 py-2 text-sm text-gray-500">Loading...</div>
-          )}
-          {!loading && documents.length === 0 && (
-            <div className="px-3 py-2 text-sm text-gray-500">
-              No documents yet
-            </div>
-          )}
-          {!loading &&
-            documents.map((doc) => (
-              <SidebarDocumentItem
-                key={doc.id}
-                document={doc}
-                onClick={() => onDocumentClick(doc.id)}
-                onDelete={() => onDocumentDelete(doc.id)}
-              />
-            ))}
+      <div
+        className={`grid transition-[grid-template-rows] duration-200 ease-out ${isExpanded ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}`}
+      >
+        <div className="overflow-hidden">
+          <div className="bg-gray-50">
+            {loading && (
+              <div className="px-3 py-2 text-sm text-gray-500">Loading...</div>
+            )}
+            {!loading && documents.length === 0 && (
+              <div className="px-3 py-2 text-sm text-gray-500">
+                No documents yet
+              </div>
+            )}
+            {!loading &&
+              documents.map((doc) => (
+                <SidebarDocumentItem
+                  key={doc.id}
+                  document={doc}
+                  onClick={() => onDocumentClick(doc.id)}
+                  onDelete={() => onDocumentDelete(doc.id)}
+                />
+              ))}
+          </div>
         </div>
-      )}
+      </div>
     </div>
   )
 }

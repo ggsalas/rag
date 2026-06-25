@@ -7,6 +7,7 @@ interface ResultListProps {
   isSearching: boolean
   hasSearched: boolean
   error: string | null
+  focusedChunkId?: string | null
 }
 
 export function ResultList({
@@ -14,6 +15,7 @@ export function ResultList({
   isSearching,
   hasSearched,
   error,
+  focusedChunkId,
 }: ResultListProps) {
   // Error state
   if (error) {
@@ -128,7 +130,12 @@ export function ResultList({
         {results.length} {results.length === 1 ? 'result' : 'results'} found
       </p>
       {results.map((result, index) => (
-        <ResultCard key={result.chunkId} result={result} rank={index + 1} />
+        <ResultCard
+          key={result.chunkId}
+          result={result}
+          rank={index + 1}
+          isFocused={result.chunkId === focusedChunkId}
+        />
       ))}
     </div>
   )

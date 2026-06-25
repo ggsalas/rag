@@ -14,9 +14,14 @@ export function SearchPage() {
 
   useOramaHydration(libraryId)
 
-  // Get initial query from URL or location state (when returning from document viewer)
-  const stateQuery = (location.state as { searchQuery?: string })?.searchQuery
+  // Get initial query and focused result from location state (when returning from document viewer)
+  const locationState = location.state as {
+    searchQuery?: string
+    focusedChunkId?: string | null
+  } | null
+  const stateQuery = locationState?.searchQuery
   const initialQuery = searchParams.get('q') || stateQuery || ''
+  const focusedChunkId = locationState?.focusedChunkId
 
   const {
     results,
@@ -50,6 +55,7 @@ export function SearchPage() {
           initialQuery={initialQuery}
           hybridWeights={hybridWeights}
           onWeightsChange={setHybridWeights}
+          notFocused={!!focusedChunkId}
         />
         <div className="mt-6">
           <ResultList
@@ -57,6 +63,7 @@ export function SearchPage() {
             isSearching={isSearching}
             hasSearched={hasSearched}
             error={error}
+            focusedChunkId={focusedChunkId}
           />
         </div>
       </div>

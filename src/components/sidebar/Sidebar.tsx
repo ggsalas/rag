@@ -26,7 +26,6 @@ export function Sidebar() {
   }
 
   const handleDocumentClick = (libraryId: string, documentId: string) => {
-    debugger
     navigate(`/libraries/${libraryId}/documents/${documentId}`)
   }
 

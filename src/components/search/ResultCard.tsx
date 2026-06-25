@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react'
 import type { SearchResult } from '@/types/search'
 import { ScoreBadge } from './ScoreBadge'
 import { Link, useParams, useSearchParams } from 'react-router'
@@ -5,18 +6,31 @@ import { Link, useParams, useSearchParams } from 'react-router'
 interface ResultCardProps {
   result: SearchResult
   rank: number
+  isFocused?: boolean
 }
 
-export function ResultCard({ result, rank }: ResultCardProps) {
+export function ResultCard({ result, rank, isFocused = false }: ResultCardProps) {
   const { libraryId } = useParams<{ libraryId: string }>()
   const [searchParams] = useSearchParams()
   const currentQuery = searchParams.get('q') || ''
+  const cardRef = useRef<HTMLAnchorElement>(null)
+
+  useEffect(() => {
+    if (isFocused && cardRef.current) {
+      cardRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }
+  }, [isFocused])
 
   return (
     <Link
+      ref={cardRef}
       to={`/libraries/${libraryId}/documents/${result.documentId}?chunk=${result.chunkIndex}`}
       state={{ searchQuery: currentQuery }}
-      className="block bg-white rounded-lg border border-gray-200 p-4 hover:shadow-md hover:border-blue-300 transition-all"
+      className={`block bg-white rounded-lg border p-4 hover:shadow-md transition-all ${
+        isFocused
+          ? 'border-blue-400 ring-2 ring-blue-200'
+          : 'border-gray-200 hover:border-blue-300'
+      }`}
     >
       <div className="flex items-start justify-between gap-3 mb-2">
         <div className="flex items-center gap-2 min-w-0">

@@ -16,6 +16,7 @@ interface SearchBarProps {
   initialQuery?: string
   hybridWeights?: HybridWeights
   onWeightsChange?: (weights: HybridWeights) => void
+  notFocused?: boolean
 }
 
 export function SearchBar({
@@ -24,6 +25,7 @@ export function SearchBar({
   initialQuery = '',
   hybridWeights,
   onWeightsChange,
+  notFocused,
 }: SearchBarProps) {
   const [inputValue, setInputValue] = useState(initialQuery)
   const [localWeight, setLocalWeight] = useState(hybridWeights?.vector ?? 0.5)
@@ -31,8 +33,10 @@ export function SearchBar({
   const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
-    inputRef.current?.focus()
-  }, [])
+    if (!notFocused) {
+      inputRef.current?.focus()
+    }
+  }, [notFocused])
 
   useEffect(() => {
     return () => {
@@ -79,7 +83,8 @@ export function SearchBar({
 
   const isDisabled = modelStatus !== 'ready'
   const hasActiveSearch = inputValue.trim().length > 0
-  const showWeights = hybridWeights !== undefined && onWeightsChange !== undefined
+  const showWeights =
+    hybridWeights !== undefined && onWeightsChange !== undefined
 
   return (
     <div>
@@ -107,7 +112,10 @@ export function SearchBar({
             ${isDisabled ? 'border-gray-200 bg-gray-100' : 'border-gray-300'}
           `}
         >
-          <form onSubmit={handleSubmit} className="flex items-center gap-2 px-4 py-3">
+          <form
+            onSubmit={handleSubmit}
+            className="flex items-center gap-2 px-4 py-3"
+          >
             <input
               ref={inputRef}
               type="text"
@@ -156,22 +164,30 @@ export function SearchBar({
           </form>
 
           {showWeights && (
-            <div className="hidden group-focus-within:block border-t border-gray-200 px-4 py-3">
-              <div className="flex items-center gap-3">
-                <span className="text-xs text-gray-500 whitespace-nowrap">Keyword</span>
-                <input
-                  type="range"
-                  min="0"
-                  max="1"
-                  step="0.1"
-                  value={localWeight}
-                  onChange={handleSliderChange}
-                  onMouseUp={handleSliderRelease}
-                  onTouchEnd={handleSliderRelease}
-                  disabled={isDisabled}
-                  className="flex-1 h-1.5 accent-blue-500 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                />
-                <span className="text-xs text-gray-500 whitespace-nowrap">Semantic</span>
+            <div className="grid grid-rows-[0fr] opacity-0 group-focus-within:grid-rows-[1fr] group-focus-within:opacity-100 transition-[grid-template-rows,opacity] duration-200 delay-[150ms] group-focus-within:delay-0">
+              <div className="overflow-hidden">
+                <div className="border-t border-gray-200 px-4 py-3">
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs text-gray-500 whitespace-nowrap">
+                      Keyword
+                    </span>
+                    <input
+                      type="range"
+                      min="0"
+                      max="1"
+                      step="0.1"
+                      value={localWeight}
+                      onChange={handleSliderChange}
+                      onMouseUp={handleSliderRelease}
+                      onTouchEnd={handleSliderRelease}
+                      disabled={isDisabled}
+                      className="flex-1 h-1.5 accent-blue-500 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                    />
+                    <span className="text-xs text-gray-500 whitespace-nowrap">
+                      Semantic
+                    </span>
+                  </div>
+                </div>
               </div>
             </div>
           )}
@@ -180,7 +196,8 @@ export function SearchBar({
 
       {modelStatus === 'loading' && (
         <p className="mt-2 text-sm text-yellow-600">
-          Loading embedding model... Search will be available once the model is ready.
+          Loading embedding model... Search will be available once the model is
+          ready.
         </p>
       )}
       {modelStatus === 'error' && (

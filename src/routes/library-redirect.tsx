@@ -4,21 +4,9 @@ import { useIndexedDocumentCountData } from '@/hooks/data/useIndexedDocumentCoun
 /** Redirects to search if indexed docs exist, otherwise to documents (DropZone) */
 export function LibraryRedirect() {
   const { libraryId } = useParams<{ libraryId: string }>()
+  const { count, loading } = useIndexedDocumentCountData(libraryId ?? '')
 
-  if (!libraryId) {
-    return null // No library selected — sidebar handles this
-  }
-
-  const { count, loading } = useIndexedDocumentCountData(libraryId)
-
-  // Wait for the count to load before redirecting
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-full">
-        <div className="text-gray-500">Loading...</div>
-      </div>
-    )
-  }
+  if (!libraryId || loading) return null
 
   const target =
     count > 0
