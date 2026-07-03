@@ -23,7 +23,9 @@ export function DocumentViewerPage() {
   const highlightRef = useRef<HTMLElement>(null)
 
   const { deleteDocument } = useDocumentActions()
-  const searchQuery = (location.state as { searchQuery?: string })?.searchQuery
+  const locationState = location.state as { searchQuery?: string; savedAi?: unknown } | null
+  const searchQuery = locationState?.searchQuery
+  const savedAi = locationState?.savedAi
 
   const highlightChunkIndex = searchParams.get('chunk')
     ? parseInt(searchParams.get('chunk')!, 10)
@@ -73,7 +75,7 @@ export function DocumentViewerPage() {
     const backUrl = searchQuery
       ? `/libraries/${libraryId}/search?q=${encodeURIComponent(searchQuery)}`
       : `/libraries/${libraryId}/search`
-    navigate(backUrl, { state: { searchQuery } })
+    navigate(backUrl, { state: { searchQuery, savedAi } })
   }
 
   if (isLoading) {
@@ -110,7 +112,7 @@ export function DocumentViewerPage() {
         <DocumentViewerHeader
           document={document}
           backToSearchUrl={backToSearchUrl}
-          backToSearchState={{ searchQuery, focusedChunkId: chunk?.id ?? null }}
+          backToSearchState={{ searchQuery, focusedChunkId: chunk?.id ?? null, savedAi }}
           highlightChunkIndex={highlightChunkIndex}
           onNavigateChunk={navigateToChunk}
           onDelete={handleDelete}

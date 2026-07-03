@@ -16,9 +16,14 @@ export default defineConfig({
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
         navigateFallback: 'index.html',
+        // LLM worker bundle exceeds 2 MiB default; WebLLM model weights are cached separately by the engine
+        maximumFileSizeToCacheInBytes: 10 * 1024 * 1024,
       },
     }),
   ],
+  optimizeDeps: {
+    exclude: ['@mlc-ai/web-llm'],
+  },
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),

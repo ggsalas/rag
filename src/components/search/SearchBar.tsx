@@ -1,6 +1,5 @@
 import {
   useState,
-  useCallback,
   useRef,
   useEffect,
   type FormEvent,
@@ -21,6 +20,8 @@ interface SearchBarProps {
   minScore?: number
   onMinScoreChange?: (n: number) => void
   notFocused?: boolean
+  isAiMode?: boolean
+  onAiModeToggle?: () => void
 }
 
 export function SearchBar({
@@ -34,44 +35,24 @@ export function SearchBar({
   minScore,
   onMinScoreChange,
   notFocused,
+  isAiMode = false,
+  onAiModeToggle,
 }: SearchBarProps) {
   const [inputValue, setInputValue] = useState(initialQuery)
   const [localWeight, setLocalWeight] = useState(hybridWeights?.vector ?? 0.5)
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
-    if (!notFocused) {
-      inputRef.current?.focus()
-    }
+    if (!notFocused) inputRef.current?.focus()
   }, [notFocused])
-
-  useEffect(() => {
-    return () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current)
-    }
-  }, [])
 
   useEffect(() => {
     if (hybridWeights !== undefined) setLocalWeight(hybridWeights.vector)
   }, [hybridWeights?.vector])
 
-  const debouncedSearch = useCallback(
-    (value: string) => {
-      if (debounceRef.current) clearTimeout(debounceRef.current)
-      debounceRef.current = setTimeout(() => onSearch(value), 300)
-    },
-    [onSearch],
-  )
-
-  const handleChange = (value: string) => {
-    setInputValue(value)
-    debouncedSearch(value)
-  }
-
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault()
-    if (debounceRef.current) clearTimeout(debounceRef.current)
+    inputRef.current?.blur()
     onSearch(inputValue)
   }
 
@@ -90,19 +71,17 @@ export function SearchBar({
   }
 
   const isDisabled = modelStatus !== 'ready'
-  const hasActiveSearch = inputValue.trim().length > 0
-  const showWeights =
-    hybridWeights !== undefined && onWeightsChange !== undefined
+  const hasText = inputValue.trim().length > 0
+  const showWeights = hybridWeights !== undefined && onWeightsChange !== undefined
   const showConfig =
-    showWeights || (maxResults !== undefined && minScore !== undefined)
+    showWeights ||
+    (maxResults !== undefined && minScore !== undefined) ||
+    !!onAiModeToggle
 
   return (
     <div>
       <div className="group relative">
-        {/*
-          Invisible placeholder: same padding as the input row, stays in normal
-          flow so content below is anchored to input height only — never shifts.
-        */}
+        {/* Invisible placeholder keeps layout stable when the box expands downward */}
         <div
           className="invisible pointer-events-none select-none border border-transparent px-4 py-3 text-base"
           aria-hidden="true"
@@ -110,11 +89,7 @@ export function SearchBar({
           &nbsp;
         </div>
 
-        {/*
-          Actual search box: absolutely positioned over the placeholder.
-          Expands downward on focus (slider appears inside the border),
-          covering content below — intentional overlay, no layout shift.
-        */}
+        {/* Actual search box — absolutely positioned, expands on focus */}
         <div
           className={`
             absolute inset-x-0 top-0 z-10 rounded-lg border bg-white
@@ -122,15 +97,12 @@ export function SearchBar({
             ${isDisabled ? 'border-gray-200 bg-gray-100' : 'border-gray-300'}
           `}
         >
-          <form
-            onSubmit={handleSubmit}
-            className="flex items-center gap-2 px-4 py-3"
-          >
+          <form onSubmit={handleSubmit} className="flex items-center gap-2 px-3 py-2.5">
             <input
               ref={inputRef}
               type="text"
               value={inputValue}
-              onChange={(e) => handleChange(e.target.value)}
+              onChange={(e) => setInputValue(e.target.value)}
               placeholder={
                 isDisabled
                   ? 'Waiting for embedding model to load...'
@@ -140,7 +112,7 @@ export function SearchBar({
               className="flex-1 min-w-0 bg-transparent outline-none text-gray-900 placeholder-gray-500 disabled:opacity-50 disabled:cursor-not-allowed"
             />
 
-            {hasActiveSearch ? (
+            {hasText && (
               <button
                 type="button"
                 onClick={handleClear}
@@ -148,41 +120,50 @@ export function SearchBar({
                 aria-label="Clear search"
               >
                 <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M6 18L18 6M6 6l12 12"
-                  />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>
               </button>
-            ) : (
-              <svg
-                className="shrink-0 h-5 w-5 text-gray-400"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-                />
-              </svg>
             )}
+
+            <div className="w-px h-5 bg-gray-200 shrink-0" />
+
+            <button
+              type="submit"
+              disabled={isDisabled || !hasText}
+              className="shrink-0 px-3 py-1 text-sm font-medium rounded-md bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              Ask
+            </button>
           </form>
 
           {showConfig && (
             <div className="grid grid-rows-[0fr] opacity-0 group-focus-within:grid-rows-[1fr] group-focus-within:opacity-100 transition-[grid-template-rows,opacity] duration-200 delay-[150ms] group-focus-within:delay-0">
               <div className="overflow-hidden">
-                <div className="border-t border-gray-200 px-4 py-3">
-                  <div className="flex items-center gap-3">
+                <div className="border-t border-gray-200 px-3 py-2">
+                  <div className="flex items-center gap-2 flex-wrap">
+
+                    {onAiModeToggle && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={onAiModeToggle}
+                          disabled={isDisabled}
+                          className={`flex items-center gap-1 text-xs font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                            isAiMode ? 'text-blue-600' : 'text-gray-400 hover:text-gray-600'
+                          }`}
+                        >
+                          <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+                          </svg>
+                          AI answer
+                        </button>
+                        <div className="w-px h-4 bg-gray-200 mx-1" />
+                      </>
+                    )}
+
                     {showWeights && (
                       <>
-                        <span className="text-xs text-gray-500 whitespace-nowrap">
-                          Keyword
-                        </span>
+                        <span className="text-xs text-gray-500 whitespace-nowrap">Keyword</span>
                         <input
                           type="range"
                           min="0"
@@ -193,30 +174,22 @@ export function SearchBar({
                           onMouseUp={handleSliderRelease}
                           onTouchEnd={handleSliderRelease}
                           disabled={isDisabled}
-                          className="flex-1 h-1.5 accent-blue-500 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                          className="flex-1 min-w-20 h-1.5 accent-blue-500 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                         />
-                        <span className="text-xs text-gray-500 whitespace-nowrap">
-                          Semantic
-                        </span>
+                        <span className="text-xs text-gray-500 whitespace-nowrap">Semantic</span>
                       </>
                     )}
 
                     {maxResults !== undefined && onMaxResultsChange && (
                       <>
                         <div className="w-px h-4 bg-gray-200 mx-1" />
-                        <span className="text-xs text-gray-500 whitespace-nowrap">
-                          Max results
-                        </span>
+                        <span className="text-xs text-gray-500 whitespace-nowrap">Max results</span>
                         <input
                           type="number"
                           min="1"
                           max="100"
                           value={maxResults}
-                          onChange={(e) =>
-                            onMaxResultsChange(
-                              Math.max(1, parseInt(e.target.value) || 1),
-                            )
-                          }
+                          onChange={(e) => onMaxResultsChange(Math.max(1, parseInt(e.target.value) || 1))}
                           disabled={isDisabled}
                           className="w-12 text-xs text-center border border-gray-200 rounded px-1 py-0.5 outline-none focus:border-blue-500 disabled:opacity-50 text-black"
                         />
@@ -226,21 +199,14 @@ export function SearchBar({
                     {minScore !== undefined && onMinScoreChange && (
                       <>
                         <div className="w-px h-4 bg-gray-200 mx-1" />
-                        <span className="text-xs text-gray-500 whitespace-nowrap">
-                          Min score
-                        </span>
+                        <span className="text-xs text-gray-500 whitespace-nowrap">Min score</span>
                         <input
                           type="number"
                           min="0"
                           max="100"
                           value={minScore}
                           onChange={(e) =>
-                            onMinScoreChange(
-                              Math.min(
-                                100,
-                                Math.max(0, parseInt(e.target.value) || 0),
-                              ),
-                            )
+                            onMinScoreChange(Math.min(100, Math.max(0, parseInt(e.target.value) || 0)))
                           }
                           disabled={isDisabled}
                           className="w-12 text-xs text-center border border-gray-200 rounded px-1 py-0.5 outline-none focus:border-blue-500 disabled:opacity-50 text-black"
@@ -248,6 +214,7 @@ export function SearchBar({
                         <span className="text-xs text-gray-400">%</span>
                       </>
                     )}
+
                   </div>
                 </div>
               </div>
@@ -258,8 +225,7 @@ export function SearchBar({
 
       {modelStatus === 'loading' && (
         <p className="mt-2 text-sm text-yellow-600">
-          Loading embedding model... Search will be available once the model is
-          ready.
+          Loading embedding model... Search will be available once the model is ready.
         </p>
       )}
       {modelStatus === 'error' && (

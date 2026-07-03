@@ -5,7 +5,7 @@ import { DeleteButton } from '@/components/DeleteButton'
 interface DocumentViewerHeaderProps {
   document: DocumentMeta
   backToSearchUrl: string
-  backToSearchState: { searchQuery?: string; focusedChunkId: string | null }
+  backToSearchState: { searchQuery?: string; focusedChunkId: string | null; savedAi?: unknown }
   highlightChunkIndex: number | null
   onNavigateChunk: (index: number) => void
   onDelete: () => void

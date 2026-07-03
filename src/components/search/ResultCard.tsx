@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import type { SearchResult } from '@/types/search'
+import type { SavedAi } from './ResultList'
 import { ScoreBadge } from './ScoreBadge'
 import { Link, useParams, useSearchParams } from 'react-router'
 
@@ -7,9 +8,10 @@ interface ResultCardProps {
   result: SearchResult
   rank: number
   isFocused?: boolean
+  savedAi?: SavedAi
 }
 
-export function ResultCard({ result, rank, isFocused = false }: ResultCardProps) {
+export function ResultCard({ result, rank, isFocused = false, savedAi }: ResultCardProps) {
   const { libraryId } = useParams<{ libraryId: string }>()
   const [searchParams] = useSearchParams()
   const currentQuery = searchParams.get('q') || ''
@@ -23,9 +25,10 @@ export function ResultCard({ result, rank, isFocused = false }: ResultCardProps)
 
   return (
     <Link
+      id={`result-${result.chunkId}`}
       ref={cardRef}
       to={`/libraries/${libraryId}/documents/${result.documentId}?chunk=${result.chunkIndex}`}
-      state={{ searchQuery: currentQuery }}
+      state={{ searchQuery: currentQuery, savedAi }}
       className={`block bg-white rounded-lg border p-4 hover:shadow-md transition-all ${
         isFocused
           ? 'border-blue-400 ring-2 ring-blue-200'

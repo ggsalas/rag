@@ -1,6 +1,13 @@
 import type { SearchResult } from '@/types/search'
+import type { LLMCitation } from '@/services/llm/llm.service'
 import { ResultCard } from './ResultCard'
 import { EmptyState } from '@/components/ui/EmptyState'
+
+export interface SavedAi {
+  answer: string
+  citations: LLMCitation[]
+  query: string
+}
 
 interface ResultListProps {
   results: SearchResult[]
@@ -8,6 +15,7 @@ interface ResultListProps {
   hasSearched: boolean
   error: string | null
   focusedChunkId?: string | null
+  savedAi?: SavedAi
 }
 
 export function ResultList({
@@ -16,6 +24,7 @@ export function ResultList({
   hasSearched,
   error,
   focusedChunkId,
+  savedAi,
 }: ResultListProps) {
   // Error state
   if (error) {
@@ -135,6 +144,7 @@ export function ResultList({
           result={result}
           rank={index + 1}
           isFocused={result.chunkId === focusedChunkId}
+          savedAi={savedAi}
         />
       ))}
     </div>
