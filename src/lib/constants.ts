@@ -6,5 +6,5 @@ export const EMBEDDING_MODEL_NAME = 'Xenova/all-MiniLM-L6-v2'
 export const EMBEDDING_DIMENSIONS = 384
 
 export const LLM_MODEL_ID = 'Llama-3.2-1B-Instruct-q4f16_1-MLC'
-export const LLM_CONTEXT_CHUNKS = 5
+export const LLM_CONTEXT_CHUNKS = 10
 export const LLM_MAX_TOKENS = 350

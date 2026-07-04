@@ -16,6 +16,7 @@ interface ResultListProps {
   error: string | null
   focusedChunkId?: string | null
   savedAi?: SavedAi
+  citations?: LLMCitation[]
 }
 
 export function ResultList({
@@ -25,6 +26,7 @@ export function ResultList({
   error,
   focusedChunkId,
   savedAi,
+  citations,
 }: ResultListProps) {
   // Error state
   if (error) {
@@ -145,6 +147,7 @@ export function ResultList({
           rank={index + 1}
           isFocused={result.chunkId === focusedChunkId}
           savedAi={savedAi}
+          sentToLLM={citations?.some(c => c.chunkId === result.chunkId)}
         />
       ))}
     </div>

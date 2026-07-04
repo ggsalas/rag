@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { search } from './search.service'
+import { DEFAULT_MAX_RESULTS } from '@/lib/constants'
 
 // Mock the embedding service
 vi.mock('@/services/embedding/embedding.service', () => ({
@@ -57,7 +58,7 @@ describe('search.service', () => {
       'lib-1',
       'test query',
       fakeEmbedding,
-      5,
+      DEFAULT_MAX_RESULTS,
       undefined,
     )
     expect(results).toHaveLength(1)
@@ -93,7 +94,7 @@ describe('search.service', () => {
       'lib-1',
       'hello world',
       fakeEmbedding,
-      5,
+      DEFAULT_MAX_RESULTS,
       undefined,
     )
   })
@@ -138,7 +139,7 @@ describe('search.service', () => {
       'lib-1',
       'query',
       fakeEmbedding,
-      5,
+      DEFAULT_MAX_RESULTS,
       customWeights,
     )
   })

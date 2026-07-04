@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-RAG is a PWA that runs 100% in the browser. It provides local semantic document search (RAG) with zero backend and full privacy. Documents never leave the user's device.
+RAG is a PWA that runs 100% in the browser. It provides local semantic document search and AI-powered answers with zero backend and full privacy. Documents never leave the user's device.
 
 Users organize documents into **Libraries**. Each library is an independent collection with its own documents, chunks, embeddings, and vector search index.
 
@@ -18,6 +18,7 @@ Users organize documents into **Libraries**. Each library is an independent coll
 | Persistence   | Dexie.js                  | 4.x (IndexedDB wrapper)                         |
 | Vector Search | Orama                     | 3.x                                             |
 | Embeddings    | @huggingface/transformers | 4.x                                             |
+| LLM (AI mode) | @mlc-ai/web-llm           | 0.x (WebGPU, main thread)                       |
 | PDF Parsing   | pdfjs-dist                | 6.x                                             |
 | DOCX Parsing  | mammoth                   | 1.x                                             |
 | Worker Comms  | Comlink                   | 4.x                                             |
@@ -102,6 +103,7 @@ UI (components, routes)
 
 8. **`store/`** (Zustand) holds ONLY cross-route state:
    - `modelStatus` (embedding model loading state)
+   - `llmStatus` / `llmProgress` (LLM model loading state — shared across routes so the model isn't re-downloaded on navigation)
    - `processingQueue` (documents being processed)
    - `stats` (global statistics)
 
@@ -203,6 +205,27 @@ async function search(query: string): Promise<SearchResult[]> {
 }
 ```
 
+### LLM runs on the main thread via WebGPU:
+
+The LLM service (`src/services/llm/llm.service.ts`) uses `@mlc-ai/web-llm` directly on the main thread — not in a Web Worker. This is intentional: WebGPU inference offloads compute to the GPU, and the JavaScript overhead is minimal. The module-level `engine` singleton ensures the model is loaded only once per session.
+
+```ts
+// src/services/llm/llm.service.ts
+import { CreateMLCEngine } from '@mlc-ai/web-llm'
+
+let engine: MLCEngine | null = null
+
+export async function initLLMModel(onProgress?: LLMProgressCallback): Promise<void> {
+  engine = await CreateMLCEngine(LLM_MODEL_ID, { ... })
+}
+```
+
+`@mlc-ai/web-llm` must be excluded from Vite's `optimizeDeps` to avoid bundling it twice:
+```ts
+// vite.config.ts
+optimizeDeps: { exclude: ['@mlc-ai/web-llm'] }
+```
+
 ### Workers are accessed via Comlink proxies:
 
 ```ts
@@ -257,5 +280,6 @@ function DocumentsPage() {
 - ❌ Do NOT store `libraryId` in Zustand — derive from route params
 - ❌ Do NOT put tests in a separate `tests/` folder — co-locate them
 - ❌ Do NOT use `@xenova/transformers` — use `@huggingface/transformers`
+- ❌ Do NOT add `@mlc-ai/web-llm` to Vite's `optimizeDeps.include` — keep it excluded to avoid duplicate TVM runtime instances
 - ❌ Do NOT access IndexedDB directly — use Dexie
 - ❌ Do NOT access Orama from components — go through services

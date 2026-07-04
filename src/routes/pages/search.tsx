@@ -1,5 +1,5 @@
 import { useParams, useSearchParams, useLocation, useNavigate } from 'react-router'
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { useAppStore } from '@/store/app.store'
 import { useSearch } from '@/hooks/useSearch'
 import { useOramaHydration } from '@/hooks/useOramaHydration'
@@ -9,6 +9,13 @@ import { ResultList } from '@/components/search/ResultList'
 import { LLMAnswer } from '@/components/search/LLMAnswer'
 import { MainPanel } from '@/components/sidebar/MainPanel'
 import type { LLMCitation } from '@/services/llm/llm.service'
+import { LLM_CONTEXT_CHUNKS } from '@/lib/constants'
+import type { SearchResult } from '@/types/search'
+
+/** Returns a stable string key representing which doc+chunk pairs are in a context window */
+function chunkContextKey(items: Array<Pick<SearchResult | LLMCitation, 'documentId' | 'chunkId'>>): string {
+  return items.map((i) => `${i.documentId}:${i.chunkId}`).join(',')
+}
 
 interface SavedAi {
   answer: string
@@ -81,18 +88,26 @@ export function SearchPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isGenerating])
 
+  // Tracks the doc+chunk keys last sent to the LLM. Initialized from savedAi.citations so that
+  // navigating back to this page with a restored answer skips re-generation (same chunks).
+  const prevContextKeyRef = useRef<string>(
+    savedAi ? chunkContextKey(savedAi.citations) : ''
+  )
+
   // Trigger generation after search completes when AI mode is active
   useEffect(() => {
     if (!isAiMode) { clearAnswer(); return }
     if (llmStatus === 'idle') { loadLLM(); return }
     if (llmStatus !== 'ready') return
     if (!hasSearched) {
-      // Clear only when the user explicitly wiped the query (X button)
       if (!query.trim()) clearAnswer()
       return
     }
-    // Skip if we already have the answer for this exact query (e.g. restored from nav state)
-    if (answer && answeredQuery === query) return
+    const topContextKey = chunkContextKey(results.slice(0, LLM_CONTEXT_CHUNKS))
+    // Skip only when query AND chunks are identical (e.g. restored from nav state).
+    // A config change produces different chunks even for the same query → regenerate.
+    if (answer && answeredQuery === query && topContextKey === prevContextKeyRef.current) return
+    prevContextKeyRef.current = topContextKey
     if (results.length > 0) generate(query, results)
     else clearAnswer()
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -163,6 +178,7 @@ export function SearchPage() {
             error={error}
             focusedChunkId={focusedChunkId}
             savedAi={aiState}
+            citations={isAiMode ? citations : undefined}
           />
         </div>
       </div>

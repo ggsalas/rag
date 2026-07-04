@@ -1,19 +1,24 @@
 import { Link, useParams, useSearchParams } from 'react-router'
 import type { LLMCitation } from '@/services/llm/llm.service'
-import type { LLMStatus } from '@/store/app.store'
+import type { ModelStatus } from '@/store/app.store'
 import type { SavedAi } from './ResultList'
 
 interface LLMAnswerProps {
   answer: string
   citations: LLMCitation[]
   isGenerating: boolean
-  llmStatus: LLMStatus
+  llmStatus: ModelStatus
   llmProgress: number
   error: string | null
   savedAi?: SavedAi
 }
 
-function citationHref(libraryId: string, c: LLMCitation, query: string, savedAi?: SavedAi) {
+function citationHref(
+  libraryId: string,
+  c: LLMCitation,
+  query: string,
+  savedAi?: SavedAi,
+) {
   const base = `/libraries/${libraryId}/documents/${c.documentId}?chunk=${c.chunkIndex}`
   return { to: base, state: { searchQuery: query, savedAi } }
 }
@@ -40,7 +45,12 @@ function AnswerText({
           const idx = parseInt(match[1])
           const citation = citations.find((c) => c.index === idx)
           if (citation) {
-            const { to, state } = citationHref(libraryId, citation, query, savedAi)
+            const { to, state } = citationHref(
+              libraryId,
+              citation,
+              query,
+              savedAi,
+            )
             return (
               <Link
                 key={i}
@@ -88,7 +98,8 @@ export function LLMAnswer({
           />
         </div>
         <p className="mt-1.5 text-xs text-blue-600">
-          {llmProgress}% — downloading Llama 3.2 1B (~880 MB, cached after first load)
+          {llmProgress}% — downloading Llama 3.2 1B (~880 MB, cached after first
+          load)
         </p>
       </div>
     )
@@ -149,7 +160,12 @@ export function LLMAnswer({
           <p className="text-xs font-medium text-blue-600 mb-1.5">Sources</p>
           <div className="flex flex-wrap gap-1.5">
             {citations.map((c) => {
-              const { to, state } = citationHref(libraryId!, c, currentQuery, savedAi)
+              const { to, state } = citationHref(
+                libraryId!,
+                c,
+                currentQuery,
+                savedAi,
+              )
               return (
                 <Link
                   key={c.chunkId}

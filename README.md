@@ -5,7 +5,7 @@
   <p><a href="https://ggsalas.github.io/rag/">https://ggsalas.github.io/rag/</a></p>
 </div>
 
-A privacy-first PWA for semantic document search that runs 100% in the browser. No backend, no data collection—everything stays on your device.
+A privacy-first PWA for semantic document search and AI-powered answers that runs entirely in your browser. No backend, no data collection. Your data is processed locally.
 
 ## How It Works
 
@@ -15,11 +15,11 @@ Documents are organized into **Libraries** — independent collections, each wit
 
 When a document is uploaded, its text is extracted according to file type:
 
-| Format   | Parser                    | Notes                              |
-| -------- | ------------------------- | ---------------------------------- |
-| PDF      | pdfjs-dist                | Page metadata preserved for chunks |
-| DOCX     | mammoth                   |                                    |
-| TXT / MD | Native browser `File.text()` |                               |
+| Format   | Parser                       |
+| -------- | ---------------------------- |
+| PDF      | pdfjs-dist                   |
+| DOCX     | mammoth                      |
+| TXT / MD | Native browser `File.text()` |
 
 Parsing runs in a Web Worker to avoid blocking the UI.
 
@@ -33,6 +33,10 @@ Both chunks and embeddings are persisted in IndexedDB (Dexie) — the source of 
 
 Queries run against Orama using hybrid mode: **semantic** (vector similarity) + **keyword** (BM25). The balance between both modes is adjustable via a slider in the UI.
 
+### 4. AI Answer Mode
+
+An optional toggle in the search bar activates AI Answer mode. The top search results are sent as context to a local LLM (Llama 3.2 1B), which generates a streamed response with numbered citations (`[1]`, `[2]`, ...) linked directly to the source chunks. The model runs via WebGPU using `@mlc-ai/web-llm` — no API key, no network request, fully private. The model (~880 MB) is downloaded once and cached by the browser.
+
 ## Tech Stack
 
 | Layer         | Technology                  |
@@ -45,6 +49,7 @@ Queries run against Orama using hybrid mode: **semantic** (vector similarity) + 
 | Database      | Dexie.js 4 (IndexedDB)      |
 | Vector Search | Orama 3                     |
 | Embeddings    | @huggingface/transformers 4 |
+| LLM           | @mlc-ai/web-llm (WebGPU)    |
 | Workers       | Comlink 4                   |
 | Testing       | Vitest 4                    |
 | PWA           | vite-plugin-pwa 1           |

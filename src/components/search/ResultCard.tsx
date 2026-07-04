@@ -9,9 +9,16 @@ interface ResultCardProps {
   rank: number
   isFocused?: boolean
   savedAi?: SavedAi
+  sentToLLM?: boolean
 }
 
-export function ResultCard({ result, rank, isFocused = false, savedAi }: ResultCardProps) {
+export function ResultCard({
+  result,
+  rank,
+  isFocused = false,
+  savedAi,
+  sentToLLM,
+}: ResultCardProps) {
   const { libraryId } = useParams<{ libraryId: string }>()
   const [searchParams] = useSearchParams()
   const currentQuery = searchParams.get('q') || ''
@@ -44,7 +51,14 @@ export function ResultCard({ result, rank, isFocused = false, savedAi }: ResultC
             {result.documentName}
           </h3>
         </div>
-        <ScoreBadge score={result.score} />
+        <div className="flex items-center gap-2">
+          {sentToLLM === false && (
+            <span className="text-xs text-gray-400 shrink-0">
+              outside AI context (limit: 10)
+            </span>
+          )}
+          <ScoreBadge score={result.score} />
+        </div>
       </div>
 
       {result.page && (
