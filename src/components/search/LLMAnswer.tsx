@@ -1,7 +1,5 @@
-import { Link, useParams, useSearchParams } from 'react-router'
 import type { LLMCitation } from '@/services/llm/llm.service'
 import type { ModelStatus } from '@/store/app.store'
-import type { SavedAi } from './ResultList'
 
 interface LLMAnswerProps {
   answer: string
@@ -10,31 +8,17 @@ interface LLMAnswerProps {
   llmStatus: ModelStatus
   llmProgress: number
   error: string | null
-  savedAi?: SavedAi
-}
-
-function citationHref(
-  libraryId: string,
-  c: LLMCitation,
-  query: string,
-  savedAi?: SavedAi,
-) {
-  const base = `/libraries/${libraryId}/documents/${c.documentId}?chunk=${c.chunkIndex}`
-  return { to: base, state: { searchQuery: query, savedAi } }
+  onCitationClick: (citation: LLMCitation) => void
 }
 
 function AnswerText({
   text,
   citations,
-  libraryId,
-  query,
-  savedAi,
+  onCitationClick,
 }: {
   text: string
   citations: LLMCitation[]
-  libraryId: string
-  query: string
-  savedAi?: SavedAi
+  onCitationClick: (c: LLMCitation) => void
 }) {
   const parts = text.split(/(\[\d+\])/)
   return (
@@ -45,22 +29,16 @@ function AnswerText({
           const idx = parseInt(match[1])
           const citation = citations.find((c) => c.index === idx)
           if (citation) {
-            const { to, state } = citationHref(
-              libraryId,
-              citation,
-              query,
-              savedAi,
-            )
             return (
-              <Link
+              <button
                 key={i}
-                to={to}
-                state={state}
+                type="button"
+                onClick={() => onCitationClick(citation)}
                 className="inline-flex items-center justify-center w-5 h-5 text-xs font-semibold text-blue-700 bg-blue-100 rounded hover:bg-blue-200 transition-colors align-baseline mx-0.5"
                 title={`${citation.documentName}${citation.page ? ` · p.${citation.page}` : ''}`}
               >
                 {idx}
-              </Link>
+              </button>
             )
           }
         }
@@ -77,11 +55,8 @@ export function LLMAnswer({
   llmStatus,
   llmProgress,
   error,
-  savedAi,
+  onCitationClick,
 }: LLMAnswerProps) {
-  const { libraryId } = useParams<{ libraryId: string }>()
-  const [searchParams] = useSearchParams()
-  const currentQuery = searchParams.get('q') ?? ''
   if (llmStatus === 'loading') {
     return (
       <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
@@ -149,40 +124,8 @@ export function LLMAnswer({
         <AnswerText
           text={answer}
           citations={citations}
-          libraryId={libraryId!}
-          query={currentQuery}
-          savedAi={savedAi}
+          onCitationClick={onCitationClick}
         />
-      )}
-
-      {!isGenerating && citations.length > 0 && (
-        <div className="mt-3 pt-3 border-t border-blue-200">
-          <p className="text-xs font-medium text-blue-600 mb-1.5">Sources</p>
-          <div className="flex flex-wrap gap-1.5">
-            {citations.map((c) => {
-              const { to, state } = citationHref(
-                libraryId!,
-                c,
-                currentQuery,
-                savedAi,
-              )
-              return (
-                <Link
-                  key={c.chunkId}
-                  to={to}
-                  state={state}
-                  className="inline-flex items-center gap-1 px-2 py-0.5 text-xs bg-white border border-blue-200 rounded-full text-blue-700 hover:border-blue-400 hover:bg-blue-50 transition-colors"
-                >
-                  <span className="font-semibold">[{c.index}]</span>
-                  <span className="text-blue-600/80 max-w-[140px] truncate">
-                    {c.documentName}
-                  </span>
-                  {c.page && <span className="text-blue-500">p.{c.page}</span>}
-                </Link>
-              )
-            })}
-          </div>
-        </div>
       )}
     </div>
   )

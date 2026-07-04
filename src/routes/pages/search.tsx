@@ -204,7 +204,7 @@ export function SearchPage() {
               llmStatus={llmStatus}
               llmProgress={llmProgress}
               error={llmError}
-              savedAi={aiState}
+              onCitationClick={(c) => setFocusedChunkId(c.chunkId)}
             />
           </div>
         )}

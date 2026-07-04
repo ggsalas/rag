@@ -2,14 +2,20 @@ import { useLayoutEffect, useRef } from 'react'
 import type { SearchResult } from '@/types/search'
 import type { SavedAi } from './ResultList'
 import { ScoreBadge } from './ScoreBadge'
-import { useParams, useSearchParams, useLocation, useNavigate } from 'react-router'
+import {
+  useParams,
+  useSearchParams,
+  useLocation,
+  useNavigate,
+} from 'react-router'
 
 interface ResultCardProps {
   result: SearchResult
   rank: number
   isFocused?: boolean
   savedAi?: SavedAi
-  sentToLLM?: boolean
+  /** undefined = AI mode off · null = AI mode on, not sent · number = sent with this citation index */
+  llmCitationIndex?: number | null
 }
 
 export function ResultCard({
@@ -17,7 +23,7 @@ export function ResultCard({
   rank,
   isFocused = false,
   savedAi,
-  sentToLLM,
+  llmCitationIndex,
 }: ResultCardProps) {
   const { libraryId } = useParams<{ libraryId: string }>()
   const [searchParams] = useSearchParams()
@@ -54,7 +60,9 @@ export function ResultCard({
       role="link"
       tabIndex={0}
       onClick={handleClick}
-      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleClick() }}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') handleClick()
+      }}
       className={`block bg-white rounded-lg border p-4 hover:shadow-md transition-all cursor-pointer ${
         isFocused
           ? 'border-blue-400 ring-2 ring-blue-200'
@@ -63,17 +71,19 @@ export function ResultCard({
     >
       <div className="flex items-start justify-between gap-3 mb-2">
         <div className="flex items-center gap-2 min-w-0">
-          <span className="flex-shrink-0 text-sm font-medium text-gray-400">
-            #{rank}
-          </span>
           <h3 className="text-sm font-semibold text-gray-900 truncate">
             {result.documentName}
           </h3>
         </div>
         <div className="flex items-center gap-2">
-          {sentToLLM === false && (
+          {llmCitationIndex === null && (
             <span className="text-xs text-gray-400 shrink-0">
               outside AI context (limit: 10)
+            </span>
+          )}
+          {typeof llmCitationIndex === 'number' && (
+            <span className="inline-flex items-center justify-center w-5 h-5 text-xs font-semibold text-blue-700 bg-blue-100 rounded shrink-0">
+              {llmCitationIndex}
             </span>
           )}
           <ScoreBadge score={result.score} />

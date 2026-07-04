@@ -64,7 +64,7 @@ export async function generateAnswer(
   const messages = [
     {
       role: 'system' as const,
-      content: `Answer using ONLY these sources. Cite as [1], [2], etc. after each claim. Be brief.\n\n${context}`,
+      content: `Answer using ONLY the provided sources. Place citation numbers like [1] or [2] immediately after each relevant sentence — never group them at the end. Be concise.\n\nSources:\n${context}`,
     },
     { role: 'user' as const, content: query },
   ]
