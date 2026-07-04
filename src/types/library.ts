@@ -1,3 +1,11 @@
+import type { HybridWeights } from './search'
+
+export type SearchPreferences = {
+  hybridWeights: HybridWeights
+  maxResults: number
+  minScore: number
+}
+
 export type Library = {
   id: string
   name: string
@@ -6,4 +14,5 @@ export type Library = {
   updatedAt: number
   documentCount: number
   chunkCount: number
+  searchPreferences?: SearchPreferences
 }

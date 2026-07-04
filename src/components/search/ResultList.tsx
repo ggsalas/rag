@@ -147,7 +147,7 @@ export function ResultList({
           rank={index + 1}
           isFocused={result.chunkId === focusedChunkId}
           savedAi={savedAi}
-          sentToLLM={citations?.some(c => c.chunkId === result.chunkId)}
+          sentToLLM={citations?.some((c) => c.chunkId === result.chunkId)}
         />
       ))}
     </div>

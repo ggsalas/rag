@@ -1,6 +1,6 @@
 import { db } from '@/infrastructure/db'
 import { generateId } from '@/lib/utils'
-import type { Library } from '@/types/library'
+import type { Library, SearchPreferences } from '@/types/library'
 
 /** Creates a new library in the database */
 export async function createLibrary(
@@ -40,6 +40,14 @@ export async function updateLibrary(
     ...updates,
     updatedAt: Date.now(),
   })
+}
+
+/** Persists search preferences (weights, maxResults, minScore) for a library */
+export async function updateSearchPreferences(
+  id: string,
+  prefs: SearchPreferences,
+): Promise<void> {
+  await db.libraries.update(id, { searchPreferences: prefs, updatedAt: Date.now() })
 }
 
 /** Deletes a library and all its associated documents */

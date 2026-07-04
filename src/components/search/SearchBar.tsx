@@ -43,7 +43,7 @@ export function SearchBar({
   const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
-    if (!notFocused) inputRef.current?.focus()
+    if (!notFocused) inputRef.current?.focus({ preventScroll: true })
   }, [notFocused])
 
   useEffect(() => {
