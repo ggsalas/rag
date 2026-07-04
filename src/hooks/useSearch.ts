@@ -1,7 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { search as searchService } from '@/services/search/search.service'
 import * as libraryService from '@/services/library.service'
-import { DEFAULT_MAX_RESULTS, DEFAULT_MIN_SCORE, DEFAULT_HYBRID_WEIGHTS } from '@/lib/constants'
+import { DEFAULT_MAX_RESULTS, DEFAULT_MIN_SCORE, DEFAULT_HYBRID_WEIGHTS, LLM_MAX_TOKENS } from '@/lib/constants'
 import type { SearchResult, HybridWeights } from '@/types/search'
 
 /** Hook for performing hybrid search within a library */
@@ -14,11 +14,12 @@ export function useSearch(libraryId: string, initialQuery = '') {
   const [hybridWeights, setHybridWeights] = useState<HybridWeights>(DEFAULT_HYBRID_WEIGHTS)
   const [maxResults, setMaxResults] = useState(DEFAULT_MAX_RESULTS)
   const [minScore, setMinScore] = useState(DEFAULT_MIN_SCORE)
+  const [llmMaxTokens, setLlmMaxTokens] = useState(LLM_MAX_TOKENS)
   const abortRef = useRef(0)
   const initialSearchDone = useRef(false)
   // Always-current snapshot of prefs used by wrapped setters to avoid stale closures
-  const prefsRef = useRef({ hybridWeights, maxResults, minScore })
-  prefsRef.current = { hybridWeights, maxResults, minScore }
+  const prefsRef = useRef({ hybridWeights, maxResults, minScore, llmMaxTokens })
+  prefsRef.current = { hybridWeights, maxResults, minScore, llmMaxTokens }
   // Blocks the initial search until saved preferences are loaded from the DB,
   // preventing a first search with defaults followed by a re-search with saved prefs.
   const [prefsReady, setPrefsReady] = useState(false)
@@ -27,10 +28,11 @@ export function useSearch(libraryId: string, initialQuery = '') {
   useEffect(() => {
     libraryService.getLibraryById(libraryId).then((library) => {
       if (library?.searchPreferences) {
-        const { hybridWeights: hw, maxResults: mr, minScore: ms } = library.searchPreferences
+        const { hybridWeights: hw, maxResults: mr, minScore: ms, llmMaxTokens: lmt } = library.searchPreferences
         setHybridWeights(hw)
         setMaxResults(mr)
         setMinScore(ms)
+        if (lmt !== undefined) setLlmMaxTokens(lmt)
       }
       setPrefsReady(true)
     })
@@ -114,6 +116,11 @@ export function useSearch(libraryId: string, initialQuery = '') {
     libraryService.updateSearchPreferences(libraryId, { ...prefsRef.current, minScore: n })
   }, [libraryId])
 
+  const handleSetLlmMaxTokens = useCallback((n: number) => {
+    setLlmMaxTokens(n)
+    libraryService.updateSearchPreferences(libraryId, { ...prefsRef.current, llmMaxTokens: n })
+  }, [libraryId])
+
   return {
     query,
     results,
@@ -128,5 +135,7 @@ export function useSearch(libraryId: string, initialQuery = '') {
     setMaxResults: handleSetMaxResults,
     minScore,
     setMinScore: handleSetMinScore,
+    llmMaxTokens,
+    setLlmMaxTokens: handleSetLlmMaxTokens,
   }
 }

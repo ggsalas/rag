@@ -1,6 +1,6 @@
 import { CreateMLCEngine, prebuiltAppConfig, type MLCEngine, type InitProgressReport } from '@mlc-ai/web-llm'
 import type { SearchResult } from '@/types/search'
-import { LLM_MODEL_ID, LLM_CONTEXT_CHUNKS } from '@/lib/constants'
+import { LLM_MODEL_ID, LLM_CONTEXT_CHUNKS, LLM_MAX_TOKENS } from '@/lib/constants'
 
 export type LLMProgressCallback = (progress: number, text: string) => void
 export type LLMTokenCallback = (token: string, done: boolean) => void
@@ -45,6 +45,7 @@ export async function generateAnswer(
   query: string,
   results: SearchResult[],
   onToken: LLMTokenCallback,
+  maxTokens: number = LLM_MAX_TOKENS,
 ): Promise<LLMCitation[]> {
   if (!engine) throw new Error('LLM model not loaded')
 
@@ -71,7 +72,7 @@ export async function generateAnswer(
 
   isRunning = true
   try {
-    const stream = await engine.chat.completions.create({ messages, stream: true, max_tokens: 350 })
+    const stream = await engine.chat.completions.create({ messages, stream: true, max_tokens: maxTokens })
 
     for await (const chunk of stream) {
       const token = chunk.choices[0]?.delta?.content ?? ''

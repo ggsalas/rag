@@ -7,6 +7,7 @@ export interface SavedAi {
   answer: string
   citations: LLMCitation[]
   query: string
+  llmMaxTokens: number
 }
 
 interface ResultListProps {

@@ -50,7 +50,7 @@ export function useLLMAnswer(init: LLMAnswerInit = {}) {
   }, [isAiMode, loadModel])
 
   const generate = useCallback(
-    async (query: string, results: SearchResult[]) => {
+    async (query: string, results: SearchResult[], maxTokens?: number) => {
       if (!query.trim() || results.length === 0) {
         setAnswer('')
         setCitations([])
@@ -70,10 +70,15 @@ export function useLLMAnswer(init: LLMAnswerInit = {}) {
       setLlmError(null)
 
       try {
-        const foundCitations = await generateAnswer(query, results, (token, done) => {
-          if (id !== genIdRef.current) return
-          if (!done && token) setAnswer((prev) => prev + token)
-        })
+        const foundCitations = await generateAnswer(
+          query,
+          results,
+          (token, done) => {
+            if (id !== genIdRef.current) return
+            if (!done && token) setAnswer((prev) => prev + token)
+          },
+          maxTokens,
+        )
         if (id === genIdRef.current) setCitations(foundCitations)
       } catch (err) {
         if (id === genIdRef.current) {

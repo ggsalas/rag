@@ -22,6 +22,8 @@ interface SearchBarProps {
   notFocused?: boolean
   isAiMode?: boolean
   onAiModeToggle?: () => void
+  llmMaxTokens?: number
+  onLlmMaxTokensChange?: (n: number) => void
 }
 
 export function SearchBar({
@@ -37,6 +39,8 @@ export function SearchBar({
   notFocused,
   isAiMode = false,
   onAiModeToggle,
+  llmMaxTokens,
+  onLlmMaxTokensChange,
 }: SearchBarProps) {
   const [inputValue, setInputValue] = useState(initialQuery)
   const [localWeight, setLocalWeight] = useState(hybridWeights?.vector ?? 0.5)
@@ -72,7 +76,8 @@ export function SearchBar({
 
   const isDisabled = modelStatus !== 'ready'
   const hasText = inputValue.trim().length > 0
-  const showWeights = hybridWeights !== undefined && onWeightsChange !== undefined
+  const showWeights =
+    hybridWeights !== undefined && onWeightsChange !== undefined
   const showConfig =
     showWeights ||
     (maxResults !== undefined && minScore !== undefined) ||
@@ -97,7 +102,10 @@ export function SearchBar({
             ${isDisabled ? 'border-gray-200 bg-gray-100' : 'border-gray-300'}
           `}
         >
-          <form onSubmit={handleSubmit} className="flex items-center gap-2 px-3 py-2.5">
+          <form
+            onSubmit={handleSubmit}
+            className="flex items-center gap-2 px-3 py-2.5"
+          >
             <input
               ref={inputRef}
               type="text"
@@ -120,7 +128,12 @@ export function SearchBar({
                 aria-label="Clear search"
               >
                 <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M6 18L18 6M6 6l12 12"
+                  />
                 </svg>
               </button>
             )}
@@ -141,7 +154,6 @@ export function SearchBar({
               <div className="overflow-hidden">
                 <div className="border-t border-gray-200 px-3 py-2">
                   <div className="flex items-center gap-2 flex-wrap">
-
                     {onAiModeToggle && (
                       <>
                         <button
@@ -149,21 +161,51 @@ export function SearchBar({
                           onClick={onAiModeToggle}
                           disabled={isDisabled}
                           className={`flex items-center gap-1 text-xs font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
-                            isAiMode ? 'text-blue-600' : 'text-gray-400 hover:text-gray-600'
+                            isAiMode
+                              ? 'text-blue-600'
+                              : 'text-gray-400 hover:text-gray-600'
                           }`}
                         >
-                          <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+                          <svg
+                            className="h-3 w-3"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z"
+                            />
                           </svg>
                           AI answer
                         </button>
+                        {isAiMode &&
+                          llmMaxTokens !== undefined &&
+                          onLlmMaxTokensChange && (
+                            <select
+                              value={llmMaxTokens}
+                              onChange={(e) =>
+                                onLlmMaxTokensChange(Number(e.target.value))
+                              }
+                              disabled={isDisabled}
+                              className="text-xs text-gray-600 bg-white border border-gray-200 rounded px-1 py-0.5 outline-none focus:border-blue-500 disabled:opacity-50"
+                            >
+                              <option value={256}>Short</option>
+                              <option value={512}>Default</option>
+                              <option value={1024}>Large</option>
+                            </select>
+                          )}
                         <div className="w-px h-4 bg-gray-200 mx-1" />
                       </>
                     )}
 
                     {showWeights && (
                       <>
-                        <span className="text-xs text-gray-500 whitespace-nowrap">Keyword</span>
+                        <span className="text-xs text-gray-500 whitespace-nowrap">
+                          Keyword
+                        </span>
                         <input
                           type="range"
                           min="0"
@@ -176,20 +218,28 @@ export function SearchBar({
                           disabled={isDisabled}
                           className="flex-1 min-w-20 h-1.5 accent-blue-500 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                         />
-                        <span className="text-xs text-gray-500 whitespace-nowrap">Semantic</span>
+                        <span className="text-xs text-gray-500 whitespace-nowrap">
+                          Semantic
+                        </span>
                       </>
                     )}
 
                     {maxResults !== undefined && onMaxResultsChange && (
                       <>
                         <div className="w-px h-4 bg-gray-200 mx-1" />
-                        <span className="text-xs text-gray-500 whitespace-nowrap">Max results</span>
+                        <span className="text-xs text-gray-500 whitespace-nowrap">
+                          Max results
+                        </span>
                         <input
                           type="number"
                           min="1"
                           max="100"
                           value={maxResults}
-                          onChange={(e) => onMaxResultsChange(Math.max(1, parseInt(e.target.value) || 1))}
+                          onChange={(e) =>
+                            onMaxResultsChange(
+                              Math.max(1, parseInt(e.target.value) || 1),
+                            )
+                          }
                           disabled={isDisabled}
                           className="w-12 text-xs text-center border border-gray-200 rounded px-1 py-0.5 outline-none focus:border-blue-500 disabled:opacity-50 text-black"
                         />
@@ -199,14 +249,21 @@ export function SearchBar({
                     {minScore !== undefined && onMinScoreChange && (
                       <>
                         <div className="w-px h-4 bg-gray-200 mx-1" />
-                        <span className="text-xs text-gray-500 whitespace-nowrap">Min score</span>
+                        <span className="text-xs text-gray-500 whitespace-nowrap">
+                          Min score
+                        </span>
                         <input
                           type="number"
                           min="0"
                           max="100"
                           value={minScore}
                           onChange={(e) =>
-                            onMinScoreChange(Math.min(100, Math.max(0, parseInt(e.target.value) || 0)))
+                            onMinScoreChange(
+                              Math.min(
+                                100,
+                                Math.max(0, parseInt(e.target.value) || 0),
+                              ),
+                            )
                           }
                           disabled={isDisabled}
                           className="w-12 text-xs text-center border border-gray-200 rounded px-1 py-0.5 outline-none focus:border-blue-500 disabled:opacity-50 text-black"
@@ -214,7 +271,6 @@ export function SearchBar({
                         <span className="text-xs text-gray-400">%</span>
                       </>
                     )}
-
                   </div>
                 </div>
               </div>
@@ -225,7 +281,8 @@ export function SearchBar({
 
       {modelStatus === 'loading' && (
         <p className="mt-2 text-sm text-yellow-600">
-          Loading embedding model... Search will be available once the model is ready.
+          Loading embedding model... Search will be available once the model is
+          ready.
         </p>
       )}
       {modelStatus === 'error' && (

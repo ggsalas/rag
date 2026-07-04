@@ -28,6 +28,7 @@ interface SavedAi {
   answer: string
   citations: LLMCitation[]
   query: string
+  llmMaxTokens: number
 }
 
 interface LocationState {
@@ -65,6 +66,8 @@ export function SearchPage() {
     setMaxResults,
     minScore,
     setMinScore,
+    llmMaxTokens,
+    setLlmMaxTokens,
   } = useSearch(libraryId!, modelStatus === 'ready' ? initialQuery : '')
 
   // Restore AI answer from route state if the query matches
@@ -109,16 +112,17 @@ export function SearchPage() {
       replace: true,
       state: {
         ...locationState,
-        savedAi: { answer, citations, query: answeredQuery },
+        savedAi: { answer, citations, query: answeredQuery, llmMaxTokens },
       },
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isGenerating])
 
-  // Tracks the doc+chunk keys last sent to the LLM. Initialized from savedAi.citations so that
-  // navigating back to this page with a restored answer skips re-generation (same chunks).
-  const prevContextKeyRef = useRef<string>(
-    savedAi ? chunkContextKey(savedAi.citations) : '',
+  // Tracks the signature (doc+chunk keys + maxTokens) last sent to the LLM. Initialized from
+  // savedAi so navigating back with same context skips re-gen — uses the maxTokens the answer
+  // was generated with, not the current state (which may not have loaded from prefs yet).
+  const prevContextSigRef = useRef<string>(
+    savedAi ? `${chunkContextKey(savedAi.citations)}|${savedAi.llmMaxTokens}` : '',
   )
 
   // Trigger generation after search completes when AI mode is active
@@ -136,20 +140,20 @@ export function SearchPage() {
       if (!query.trim()) clearAnswer()
       return
     }
-    const topContextKey = chunkContextKey(results.slice(0, LLM_CONTEXT_CHUNKS))
-    // Skip only when query AND chunks are identical (e.g. restored from nav state).
-    // A config change produces different chunks even for the same query → regenerate.
+    const contextSig = `${chunkContextKey(results.slice(0, LLM_CONTEXT_CHUNKS))}|${llmMaxTokens}`
+    // Skip only when query AND chunks AND maxTokens are identical (e.g. restored from nav state).
+    // A config change produces different chunks or different maxTokens → regenerate.
     if (
       answer &&
       answeredQuery === query &&
-      topContextKey === prevContextKeyRef.current
+      contextSig === prevContextSigRef.current
     )
       return
-    prevContextKeyRef.current = topContextKey
-    if (results.length > 0) generate(query, results)
+    prevContextSigRef.current = contextSig
+    if (results.length > 0) generate(query, results, llmMaxTokens)
     else clearAnswer()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [results, isAiMode, llmStatus, hasSearched, query])
+  }, [results, isAiMode, llmStatus, hasSearched, query, llmMaxTokens])
 
   const handleSearch = (searchQuery: string) => {
     setFocusedChunkId(null)
@@ -173,7 +177,7 @@ export function SearchPage() {
   // allowing the document viewer to pass it back when the user returns to search.
   const aiState: SavedAi | undefined =
     !isGenerating && answer && answeredQuery
-      ? { answer, citations, query: answeredQuery }
+      ? { answer, citations, query: answeredQuery, llmMaxTokens }
       : undefined
 
   return (
@@ -193,6 +197,8 @@ export function SearchPage() {
           notFocused={!!focusedChunkId}
           isAiMode={isAiMode}
           onAiModeToggle={toggleAiMode}
+          llmMaxTokens={llmMaxTokens}
+          onLlmMaxTokensChange={(n) => { setFocusedChunkId(null); setLlmMaxTokens(n) }}
         />
 
         {showLLMAnswer && (
