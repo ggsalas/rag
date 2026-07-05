@@ -1,6 +1,15 @@
-import { CreateMLCEngine, prebuiltAppConfig, type MLCEngine, type InitProgressReport } from '@mlc-ai/web-llm'
+import {
+  CreateMLCEngine,
+  prebuiltAppConfig,
+  type MLCEngine,
+  type InitProgressReport,
+} from '@mlc-ai/web-llm'
 import type { SearchResult } from '@/types/search'
-import { LLM_MODEL_ID, LLM_CONTEXT_CHUNKS, LLM_MAX_TOKENS } from '@/lib/constants'
+import {
+  LLM_MODEL_ID,
+  LLM_CONTEXT_CHUNKS,
+  LLM_MAX_TOKENS,
+} from '@/lib/constants'
 
 export type LLMProgressCallback = (progress: number, text: string) => void
 export type LLMTokenCallback = (token: string, done: boolean) => void
@@ -14,20 +23,38 @@ export interface LLMCitation {
   chunkIndex: number
 }
 
-let engine: MLCEngine | null = null
-let isRunning = false
+// The engine + isRunning flag live on a globalThis singleton so that HMR / React
+// Fast Refresh re-evaluations of this module don't lose the running engine. Vite's
+// hot.dispose() doesn't fire in all re-eval paths (react-refresh can re-import the
+// module without dispose), and a null engine after HMR would leave the store's
+// llmStatus='ready' out of sync with the actual runtime. A window-scoped store
+// survives every re-eval within the tab.
+interface LlmModuleState {
+  engine: MLCEngine | null
+  isRunning: boolean
+}
+const globalKey = '__llmModuleState__'
+const state: LlmModuleState = ((
+  globalThis as unknown as Record<string, LlmModuleState>
+)[globalKey] ??= {
+  engine: null,
+  isRunning: false,
+})
 
 /** Loads the LLM model (runs on the main thread via WebGPU — no worker needed) */
-export async function initLLMModel(onProgress?: LLMProgressCallback): Promise<void> {
+export async function initLLMModel(
+  onProgress?: LLMProgressCallback,
+): Promise<void> {
   const appConfig = {
     ...prebuiltAppConfig,
     model_list: prebuiltAppConfig.model_list.map((m) =>
       m.model_id === LLM_MODEL_ID
         ? { ...m, overrides: { ...m.overrides, sliding_window_size: -1 } }
-        : m
+        : m,
     ),
   }
-  engine = await CreateMLCEngine(LLM_MODEL_ID, {
+
+  state.engine = await CreateMLCEngine(LLM_MODEL_ID, {
     appConfig,
     initProgressCallback: (report: InitProgressReport) => {
       onProgress?.(report.progress, report.text)
@@ -37,7 +64,7 @@ export async function initLLMModel(onProgress?: LLMProgressCallback): Promise<vo
 
 /** Interrupts any in-progress generation. Safe to call when idle. */
 export function abortLLMGeneration(): void {
-  if (isRunning && engine) engine.interruptGenerate()
+  if (state.isRunning && state.engine) state.engine.interruptGenerate()
 }
 
 /** Streams an AI answer for the query using top search results as context */
@@ -47,7 +74,8 @@ export async function generateAnswer(
   onToken: LLMTokenCallback,
   maxTokens: number = LLM_MAX_TOKENS,
 ): Promise<LLMCitation[]> {
-  if (!engine) throw new Error('LLM model not loaded')
+  if (!state.engine) throw new Error('LLM model not loaded')
+  const engine = state.engine
 
   const topResults = results.slice(0, LLM_CONTEXT_CHUNKS)
 
@@ -70,9 +98,13 @@ export async function generateAnswer(
     { role: 'user' as const, content: query },
   ]
 
-  isRunning = true
+  state.isRunning = true
   try {
-    const stream = await engine.chat.completions.create({ messages, stream: true, max_tokens: maxTokens })
+    const stream = await engine.chat.completions.create({
+      messages,
+      stream: true,
+      max_tokens: maxTokens,
+    })
 
     for await (const chunk of stream) {
       const token = chunk.choices[0]?.delta?.content ?? ''
@@ -85,7 +117,7 @@ export async function generateAnswer(
     if (msg.toLowerCase().includes('interrupt')) return citations
     throw err
   } finally {
-    isRunning = false
+    state.isRunning = false
   }
 
   return citations
