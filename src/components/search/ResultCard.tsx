@@ -11,7 +11,6 @@ import {
 
 interface ResultCardProps {
   result: SearchResult
-  rank: number
   isFocused?: boolean
   savedAi?: SavedAi
   /** undefined = AI mode off · null = AI mode on, not sent · number = sent with this citation index */
@@ -20,7 +19,6 @@ interface ResultCardProps {
 
 export function ResultCard({
   result,
-  rank,
   isFocused = false,
   savedAi,
   llmCitationIndex,

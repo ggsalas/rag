@@ -141,11 +141,10 @@ export function ResultList({
       <p className="text-sm text-gray-500">
         {results.length} {results.length === 1 ? 'result' : 'results'} found
       </p>
-      {results.map((result, index) => (
+      {results.map((result) => (
         <ResultCard
           key={result.chunkId}
           result={result}
-          rank={index + 1}
           isFocused={result.chunkId === focusedChunkId}
           savedAi={savedAi}
           llmCitationIndex={
