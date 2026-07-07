@@ -86,6 +86,7 @@ export function SearchPage() {
     llmStatus,
     llmProgress,
     llmError,
+    loadError,
     generate,
     clear: clearAnswer,
     loadModel: loadLLM,
@@ -210,6 +211,7 @@ export function SearchPage() {
               llmStatus={llmStatus}
               llmProgress={llmProgress}
               error={llmError}
+              loadError={loadError}
               onCitationClick={(c) => setFocusedChunkId(c.chunkId)}
             />
           </div>
