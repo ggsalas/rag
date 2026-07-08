@@ -47,6 +47,8 @@ describe('search.service', () => {
         text: 'sample text',
         score: 0.95,
         chunkIndex: 0,
+        headingText: '',
+        sectionPath: [],
       },
     ])
 
@@ -109,6 +111,8 @@ describe('search.service', () => {
         text: 'some text',
         score: 0.8,
         chunkIndex: 2,
+        headingText: '',
+        sectionPath: [],
       },
     ])
 
@@ -121,6 +125,8 @@ describe('search.service', () => {
       text: 'some text',
       score: 0.8,
       chunkIndex: 2,
+      headingText: '',
+      sectionPath: [],
     })
   })
 

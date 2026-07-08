@@ -107,6 +107,8 @@ async function processDocument(
       chunkIndex: data.chunkIndex,
       text: data.text,
       embedding: embeddings[i]!,
+      headingText: data.headingText,
+      sectionPath: data.sectionPath,
     }))
 
     await updateProgress(docMeta.id, PROGRESS.INDEXING[0])

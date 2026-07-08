@@ -28,6 +28,10 @@ export type Chunk = {
   chunkIndex: number
   text: string
   embedding: number[]
+  /** Immediate heading of the section this chunk belongs to (e.g. "Discography") */
+  headingText: string
+  /** Full breadcrumb of ancestor headings, root → leaf (e.g. ["Britney Spears", "Life and career", "Discography"]) */
+  sectionPath: string[]
 }
 
 export type DocumentContent = {

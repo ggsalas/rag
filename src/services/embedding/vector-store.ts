@@ -10,7 +10,18 @@ export interface VectorSearchResult {
   text: string
   score: number
   chunkIndex: number
+  headingText: string
+  sectionPath: string[]
 }
+
+/**
+ * BM25 field boosts. `headingText` gets the strongest signal since an exact
+ * match with a section heading is nearly always the most relevant chunk in that
+ * section. `sectionPath` gets a smaller boost so ancestor-heading matches still
+ * surface (e.g., searching "Discography" while the immediate heading is a
+ * subsection like "Studio albums").
+ */
+const SEARCH_BOOST = { headingText: 3, sectionPath: 1.5, text: 1 } as const
 
 const indexes = new Map<string, AnyOrama>()
 
@@ -22,6 +33,8 @@ async function createIndex(libraryId: string): Promise<AnyOrama> {
       documentId: 'string',
       documentName: 'string',
       text: 'string',
+      headingText: 'string',
+      sectionPath: 'string[]',
       embedding: `vector[${EMBEDDING_DIMENSIONS}]`,
       chunkIndex: 'number',
     } as const,
@@ -49,6 +62,8 @@ export async function insertChunks(
       documentId: chunk.documentId,
       documentName: chunk.documentName,
       text: chunk.text,
+      headingText: chunk.headingText,
+      sectionPath: chunk.sectionPath,
       embedding: chunk.embedding,
       chunkIndex: chunk.chunkIndex,
     })
@@ -70,7 +85,8 @@ export async function searchHybrid(
     mode: 'hybrid',
     term,
     vector: { value: embedding, property: 'embedding' },
-    properties: ['text'],
+    properties: ['text', 'headingText', 'sectionPath'],
+    boost: SEARCH_BOOST,
     limit: topK ?? DEFAULT_MAX_RESULTS,
     includeVectors: false,
     similarity: 0.0,
@@ -84,6 +100,8 @@ export async function searchHybrid(
     text: hit.document.text as string,
     score: hit.score,
     chunkIndex: hit.document.chunkIndex as number,
+    headingText: (hit.document.headingText as string) ?? '',
+    sectionPath: (hit.document.sectionPath as string[]) ?? [],
   }))
 }
 
@@ -111,6 +129,8 @@ export async function searchByVector(
     text: hit.document.text as string,
     score: hit.score,
     chunkIndex: hit.document.chunkIndex as number,
+    headingText: (hit.document.headingText as string) ?? '',
+    sectionPath: (hit.document.sectionPath as string[]) ?? [],
   }))
 }
 

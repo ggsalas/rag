@@ -31,6 +31,8 @@ export async function search(
     text: r.text,
     score: r.score,
     chunkIndex: r.chunkIndex,
+    headingText: r.headingText,
+    sectionPath: r.sectionPath,
   }))
 
   // Filter by relative score threshold: discard results below minScore% of the top result

@@ -89,6 +89,12 @@ export function ResultCard({
       </div>
 
       <p className="text-xs text-gray-500 mb-2">
+        {result.sectionPath.length > 0 && (
+          <span className="text-gray-600">
+            {result.sectionPath.join(' › ')}
+            <span className="mx-1.5">·</span>
+          </span>
+        )}
         Chunk {result.chunkIndex + 1}
       </p>
 
