@@ -46,7 +46,6 @@ describe('search.service', () => {
         documentName: 'test.pdf',
         text: 'sample text',
         score: 0.95,
-        page: 1,
         chunkIndex: 0,
       },
     ])
@@ -109,7 +108,6 @@ describe('search.service', () => {
         documentName: 'doc.txt',
         text: 'some text',
         score: 0.8,
-        page: undefined,
         chunkIndex: 2,
       },
     ])
@@ -122,7 +120,6 @@ describe('search.service', () => {
       documentName: 'doc.txt',
       text: 'some text',
       score: 0.8,
-      page: undefined,
       chunkIndex: 2,
     })
   })

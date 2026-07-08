@@ -19,7 +19,7 @@ Users organize documents into **Libraries**. Each library is an independent coll
 | Vector Search | Orama                     | 3.x                                             |
 | Embeddings    | @huggingface/transformers | 4.x                                             |
 | LLM (AI mode) | @mlc-ai/web-llm           | 0.x (WebGPU, main thread)                       |
-| PDF Parsing   | pdfjs-dist                | 6.x                                             |
+| PDF Parsing   | @llamaindex/liteparse-wasm | 2.x (PDFium-based, WASM)                       |
 | DOCX Parsing  | mammoth                   | 1.x                                             |
 | Worker Comms  | Comlink                   | 4.x                                             |
 | Testing       | Vitest                    | 4.x                                             |

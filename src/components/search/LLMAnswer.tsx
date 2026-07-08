@@ -36,7 +36,7 @@ function AnswerText({
                 type="button"
                 onClick={() => onCitationClick(citation)}
                 className="inline-flex items-center justify-center w-5 h-5 text-xs font-semibold text-blue-700 bg-blue-100 rounded hover:bg-blue-200 transition-colors align-baseline mx-0.5"
-                title={`${citation.documentName}${citation.page ? ` · p.${citation.page}` : ''}`}
+                title={citation.documentName}
               >
                 {idx}
               </button>

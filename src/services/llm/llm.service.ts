@@ -19,7 +19,6 @@ export interface LLMCitation {
   chunkId: string
   documentId: string
   documentName: string
-  page?: number
   chunkIndex: number
 }
 
@@ -96,7 +95,6 @@ export async function generateAnswer(
     chunkId: r.chunkId,
     documentId: r.documentId,
     documentName: r.documentName,
-    page: r.page,
     chunkIndex: r.chunkIndex,
   }))
 

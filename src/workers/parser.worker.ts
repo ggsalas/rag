@@ -1,16 +1,18 @@
 import { expose } from 'comlink'
-import { GlobalWorkerOptions, getDocument } from 'pdfjs-dist'
+import init, { LiteParse } from '@llamaindex/liteparse-wasm'
 import { extractRawText } from 'mammoth'
 
-// Configure pdfjs worker
-GlobalWorkerOptions.workerSrc = new URL(
-  'pdfjs-dist/build/pdf.worker.min.mjs',
-  import.meta.url,
-).toString()
+let liteParseReady: Promise<void> | null = null
+
+/** Lazily initialize the LiteParse WASM module once per worker */
+function ensureLiteParse(): Promise<void> {
+  if (!liteParseReady) liteParseReady = init().then(() => undefined)
+  return liteParseReady
+}
 
 export interface ParseResult {
+  /** Extracted text — markdown for PDF, raw text otherwise */
   text: string
-  pages?: string[] // only for PDF
 }
 
 export type ParseProgressCallback = (
@@ -27,32 +29,30 @@ export interface ParserWorkerAPI {
   parseText(text: string): Promise<ParseResult>
 }
 
-/** Parses a PDF file and extracts text content with page information */
+/** Parses a PDF file into structured markdown using LiteParse (PDFium) */
 async function parsePdf(
   buffer: ArrayBuffer,
   onProgress?: ParseProgressCallback,
 ): Promise<ParseResult> {
-  const doc = await getDocument({ data: buffer }).promise
-  const pages: string[] = []
+  await ensureLiteParse()
 
-  for (let i = 1; i <= doc.numPages; i++) {
-    const page = await doc.getPage(i)
-    const content = await page.getTextContent()
-    const text = content.items
-      .map((item: any) => {
-        if ('str' in item) {
-          return item.str
-        }
-        return ''
-      })
-      .join(' ')
-    pages.push(text)
-    await onProgress?.(i, doc.numPages)
-  }
+  // LiteParse is atomic (no per-page progress callback). Emit start/end signals.
+  await onProgress?.(0, 1)
 
-  return {
-    text: pages.join('\n\n'),
-    pages,
+  const parser = new LiteParse({
+    outputFormat: 'markdown',
+    imageMode: 'off',
+    extractLinks: false,
+    quiet: true,
+  })
+
+  try {
+    const bytes = new Uint8Array(buffer)
+    const result = await parser.parse(bytes)
+    await onProgress?.(1, 1)
+    return { text: result.text }
+  } finally {
+    parser.free()
   }
 }
 

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { chunkText, chunkTextWithPages } from './chunking.service'
+import { chunkText, chunkMarkdown } from './chunking.service'
 
 describe('chunking.service', () => {
   describe('chunkText', () => {
@@ -46,22 +46,25 @@ describe('chunking.service', () => {
     })
   })
 
-  describe('chunkTextWithPages', () => {
-    it('should assign page numbers', () => {
-      const pages = [
-        'Content of page one. It has multiple sentences. And more content here.',
-        'Content of page two. Also with sentences.',
-      ]
-      const chunks = chunkTextWithPages(pages, { size: 60, overlap: 10 })
-      expect(chunks.length).toBeGreaterThan(0)
-      expect(chunks[0]!.page).toBeDefined()
+  describe('chunkMarkdown', () => {
+    it('keeps each heading section as one chunk when it fits', () => {
+      const text = `## Intro\n\nShort intro paragraph.\n\n## Body\n\nShort body paragraph.`
+      const chunks = chunkMarkdown(text, { size: 500, overlap: 100 })
+      expect(chunks).toHaveLength(2)
+      expect(chunks[0]!.text).toContain('## Intro')
+      expect(chunks[1]!.text).toContain('## Body')
     })
 
-    it('should handle empty pages', () => {
-      const pages = ['', 'Content here', '']
-      const chunks = chunkTextWithPages(pages, { size: 500, overlap: 100 })
-      expect(chunks).toHaveLength(1)
-      expect(chunks[0]!.text).toBe('Content here')
+    it('splits oversized sections via paragraph chunking', () => {
+      const text = `## Big\n\n${'word '.repeat(300)}`
+      const chunks = chunkMarkdown(text, { size: 300, overlap: 50 })
+      expect(chunks.length).toBeGreaterThan(1)
+    })
+
+    it('assigns sequential chunkIndex', () => {
+      const text = `## A\n\nOne.\n\n## B\n\nTwo.\n\n## C\n\nThree.`
+      const chunks = chunkMarkdown(text, { size: 500, overlap: 100 })
+      chunks.forEach((c, i) => expect(c.chunkIndex).toBe(i))
     })
   })
 })
