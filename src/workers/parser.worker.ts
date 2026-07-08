@@ -42,8 +42,9 @@ async function parsePdf(
   const parser = new LiteParse({
     outputFormat: 'markdown',
     imageMode: 'off',
-    extractLinks: false,
+    extractLinks: true,
     quiet: true,
+    preserveVerySmallText: false,
   })
 
   try {

@@ -1,137 +1,111 @@
 import { describe, it, expect } from 'vitest'
 import { sanitize } from './sanitize.service'
 
-describe('sanitize', () => {
+describe('sanitize (conservative)', () => {
   it('returns empty string unchanged', () => {
     expect(sanitize('')).toBe('')
   })
 
-  it('preserves clean markdown untouched (aside from whitespace normalization)', () => {
-    const input = `## Section
-
-A normal paragraph with **bold** text.
-
-- item one
-- item two`
-    expect(sanitize(input)).toContain('## Section')
-    expect(sanitize(input)).toContain('A normal paragraph with **bold** text.')
-    expect(sanitize(input)).toContain('- item one')
+  it('normalizes NFKC ligatures (ﬁ → fi)', () => {
+    // U+FB01 = ﬁ, U+FB02 = ﬂ
+    const input = 'The ﬁnal ﬂower.'
+    expect(sanitize(input)).toContain('final')
+    expect(sanitize(input)).toContain('flower')
   })
 
-  it('strips inline citation markers', () => {
-    expect(sanitize('foo [12] bar')).toBe('foo bar')
-    expect(sanitize('foo [12][13][14] bar')).toBe('foo bar')
-    expect(sanitize('foo[1] bar[2][3] baz')).toBe('foo bar baz')
-  })
-
-  it('unwraps markdown links inside paragraph text', () => {
-    expect(sanitize('See [the article](https://example.com) for more.')).toBe(
-      'See the article for more.',
-    )
-  })
-
-  it('drops a standalone short link line (treated as nav)', () => {
-    expect(sanitize('[label](url "title")')).toBe('')
-  })
-
-  it('drops pure-link lines (nav / language lists)', () => {
-    const input = `Real paragraph here.
-
-[Afrikaans](https://af.wikipedia.org/wiki/Britney_Spears)
-[Deutsch](https://de.wikipedia.org/wiki/Britney_Spears)
-[Español](https://es.wikipedia.org/wiki/Britney_Spears)
-
-Another real paragraph.`
+  it('converts full-width characters to half-width via NFKC', () => {
+    // Full-width "Hello 123" (each char is different codepoint)
+    const input = 'Ｈｅｌｌｏ　１２３'
     const out = sanitize(input)
-    expect(out).toContain('Real paragraph here.')
-    expect(out).toContain('Another real paragraph.')
-    expect(out).not.toContain('Afrikaans')
-    expect(out).not.toContain('Deutsch')
+    expect(out).toContain('Hello')
+    expect(out).toContain('123')
   })
 
-  it('drops empty markdown table rows and separators', () => {
-    const input = `|col1|col2|col3|
-|---|---|---|
-| | | |
-|value|other|third|
-| | | |`
+  it('strips zero-width characters', () => {
+    // ZWSP (U+200B), ZWNJ (U+200C), ZWJ (U+200D), BOM (U+FEFF)
+    const input = 'a​b‌c‍d﻿e'
+    expect(sanitize(input)).toBe('abcde')
+  })
+
+  it('converts NBSP to regular space', () => {
+    // U+00A0 non-breaking space between "foo" and "bar"
+    const input = 'foo bar'
+    expect(sanitize(input)).toBe('foo bar')
+  })
+
+  it('preserves ATX headings', () => {
+    const input = '## Section title\n\nBody paragraph.'
+    expect(sanitize(input)).toContain('## Section title')
+  })
+
+  it('preserves bullet lists', () => {
+    const input = '- item one\n- item two\n- item three'
     const out = sanitize(input)
-    expect(out).not.toMatch(/^\s*\|\s*\|\s*\|\s*$/m)
-    expect(out).not.toMatch(/^\|---\|/m)
-    expect(out).toContain('value')
-    expect(out).toContain('other')
+    expect(out).toContain('- item one')
+    expect(out).toContain('- item two')
   })
 
-  it('strips markdown images (inline and reference)', () => {
-    expect(sanitize('before ![alt](img.png) after')).toBe('before after')
-    expect(sanitize('before ![][button_0_1.png] after')).toBe('before after')
+  it('preserves inline code content verbatim', () => {
+    // Two internal spaces inside inline code must survive whitespace collapse.
+    const input = 'Use `foo  bar` to run.'
+    expect(sanitize(input)).toContain('`foo  bar`')
   })
 
-  it('drops Wikipedia nav labels', () => {
-    const input = `Main menu
-
-Navigation
-
-Real content here.
-
-Tools
-
-Actions
-
-More real content.`
+  it('preserves fenced code blocks verbatim', () => {
+    const input = '```md\n[link](url)  double  space\n```'
     const out = sanitize(input)
-    expect(out).not.toContain('Main menu')
-    expect(out).not.toContain('Navigation')
-    expect(out).not.toContain('Tools')
-    expect(out).not.toContain('Actions')
-    expect(out).toContain('Real content here.')
-    expect(out).toContain('More real content.')
+    // The link markdown inside the code fence must NOT be unwrapped
+    expect(out).toContain('[link](url)')
+    // Internal double spaces preserved
+    expect(out).toContain('double  space')
   })
 
-  it('unwraps a paragraph wrapped in a single link (Wikipedia MD pattern)', () => {
-    const input =
-      '[Britney Jean Spears (born December 2, 1981) is an American singer.](//en.wikipedia.org/wiki/Foo!A1)'
+  it('preserves markdown link syntax (not unwrapped)', () => {
+    const input = 'See [the article](https://example.com) for details.'
     const out = sanitize(input)
-    expect(out).toBe(
-      'Britney Jean Spears (born December 2, 1981) is an American singer.',
-    )
+    expect(out).toContain('[the article](https://example.com)')
   })
 
-  it('handles the Britney.md worst-case block', () => {
-    const input = `# Sheet1
-
-|[FALSE](Sheet1!bodyContent)| | |
-|---|---|---|
-|Main menu Main menu![][button_0_0.png]|![][button_0_1.png]| |
-|Navigation| | |
-| | | |
-|[Main page](/wiki/Main_Page!A1)| | |
-|[Contents](/wiki/Wikipedia:Contents!A1)| | |
-|[Current events](/wiki/Portal:Current_events!A1)| | |
-| | | |
-|[Britney Jean Spears (born December 2, 1981) is an American singer. Referred to as the "Princess of Pop", she is widely regarded as one of the most influential entertainers of the 21st century.](//en.wikipedia.org/wiki/Foo!A1)| | |`
+  it('preserves markdown tables including empty rows', () => {
+    const input = `| col1 | col2 |
+| --- | --- |
+| a | b |
+|   |   |
+| c | d |`
     const out = sanitize(input)
-    // Nav must be gone
-    expect(out).not.toContain('Main menu')
-    expect(out).not.toContain('Main page')
-    expect(out).not.toContain('button_0_0.png')
-    // Real content preserved and unwrapped
-    expect(out).toContain('Britney Jean Spears (born December 2, 1981)')
-    expect(out).toContain('Princess of Pop')
-    expect(out).not.toContain('en.wikipedia.org')
-    expect(out).not.toContain('!A1')
+    expect(out).toContain('col1')
+    expect(out).toContain('col2')
+    expect(out).toContain('|a|b|')
+    expect(out).toContain('|c|d|')
+    // The all-blank row structure survives
+    expect(out.split('\n').filter((l) => l.includes('|')).length).toBeGreaterThanOrEqual(4)
   })
 
-  it('collapses excessive blank lines', () => {
-    const input = 'a\n\n\n\n\nb'
-    expect(sanitize(input)).toBe('a\n\nb')
+  it('collapses whitespace in regular text nodes', () => {
+    // Double spaces inside a paragraph should collapse to single spaces.
+    const input = 'foo   bar    baz.'
+    expect(sanitize(input)).toBe('foo bar baz.')
+  })
+
+  it('preserves paragraph structure with a single blank line between blocks', () => {
+    const input = 'First paragraph.\n\nSecond paragraph.'
+    const out = sanitize(input)
+    expect(out).toContain('First paragraph.')
+    expect(out).toContain('Second paragraph.')
+    expect(out).toMatch(/First paragraph\.\n\nSecond paragraph\./)
   })
 
   it('is idempotent', () => {
-    const input = `[foo](url) and [12] and ![img](x.png)
+    const input = `## Heading
 
-|a|b|
-| | |`
+A paragraph with a [link](https://x.com) and \`inline code\`.
+
+- item one
+- item two
+
+\`\`\`js
+const x = 1
+\`\`\``
     const once = sanitize(input)
     const twice = sanitize(once)
     expect(twice).toBe(once)
