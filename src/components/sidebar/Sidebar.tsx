@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Plus } from 'lucide-react'
 import { useNavigate, useParams } from 'react-router'
 import { useLibrariesData } from '@/hooks/data/useLibrariesData'
 import { useDocumentActions } from '@/hooks/useDocumentActions'
@@ -53,8 +54,10 @@ export function Sidebar() {
           size="sm"
           onClick={() => setShowCreateForm(!showCreateForm)}
           title="Create new library"
+          className="gap-1.5"
         >
-          + New
+          <Plus className="h-4 w-4" />
+          New
         </Button>
       </div>
 

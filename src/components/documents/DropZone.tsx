@@ -1,4 +1,5 @@
 import { useState, useCallback, useRef, type DragEvent } from 'react'
+import { CloudUpload } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 
 const ACCEPTED_TYPES = [
@@ -74,19 +75,10 @@ export function DropZone({ onFiles, disabled = false, className }: DropZoneProps
         onChange={(e) => handleFiles(e.target.files)}
       />
 
-      <svg
+      <CloudUpload
         className="mx-auto h-12 w-12 text-muted-foreground mb-4"
-        fill="none"
-        stroke="currentColor"
-        viewBox="0 0 24 24"
-      >
-        <path
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          strokeWidth={2}
-          d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
-        />
-      </svg>
+        strokeWidth={1.5}
+      />
 
       <p className="text-muted-foreground mb-2">
         {isDragOver ? 'Drop files here' : 'Drag & drop documents here'}

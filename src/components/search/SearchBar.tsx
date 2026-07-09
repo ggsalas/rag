@@ -5,6 +5,7 @@ import {
   type FormEvent,
   type ChangeEvent,
 } from 'react'
+import { X, Sparkles } from 'lucide-react'
 import type { ModelStatus } from '@/store/app.store'
 import type { HybridWeights } from '@/types/search'
 
@@ -124,17 +125,10 @@ export function SearchBar({
               <button
                 type="button"
                 onClick={handleClear}
-                className="shrink-0 h-5 w-5 text-muted-foreground hover:text-foreground transition-colors"
+                className="shrink-0 text-muted-foreground hover:text-foreground transition-colors"
                 aria-label="Clear search"
               >
-                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M6 18L18 6M6 6l12 12"
-                  />
-                </svg>
+                <X className="h-5 w-5" />
               </button>
             )}
 
@@ -166,19 +160,7 @@ export function SearchBar({
                               : 'text-muted-foreground hover:text-foreground'
                           }`}
                         >
-                          <svg
-                            className="h-3 w-3"
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
-                          >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={2}
-                              d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z"
-                            />
-                          </svg>
+                          <Sparkles className="h-3.5 w-3.5" />
                           AI answer
                         </button>
                         {isAiMode &&

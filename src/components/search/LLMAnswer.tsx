@@ -1,3 +1,4 @@
+import { Sparkles } from 'lucide-react'
 import type { LLMCitation } from '@/services/llm/llm.service'
 
 interface LLMAnswerProps {
@@ -56,7 +57,7 @@ export function LLMAnswer({
     return (
       <div className="rounded-lg border border-border bg-muted p-4">
         <div className="flex items-center gap-2">
-          <SparklesIcon className="h-4 w-4 text-foreground shrink-0" />
+          <Sparkles className="h-4 w-4 text-foreground shrink-0" />
           <span className="text-sm text-foreground">{error}</span>
         </div>
       </div>
@@ -68,7 +69,7 @@ export function LLMAnswer({
   return (
     <div className="rounded-lg border border-border p-4">
       <div className="flex items-center gap-2 mb-3">
-        <SparklesIcon className="h-4 w-4 text-foreground shrink-0" />
+        <Sparkles className="h-4 w-4 text-foreground shrink-0" />
         <span className="text-sm font-medium text-foreground">AI Answer</span>
         {isGenerating && (
           <span className="flex gap-0.5 ml-auto">
@@ -87,23 +88,5 @@ export function LLMAnswer({
         />
       )}
     </div>
-  )
-}
-
-function SparklesIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      className={className}
-      fill="none"
-      stroke="currentColor"
-      viewBox="0 0 24 24"
-    >
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth={2}
-        d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z"
-      />
-    </svg>
   )
 }

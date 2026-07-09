@@ -1,5 +1,10 @@
 import { useState, useEffect } from 'react'
-import { Button, type ButtonSize, type ButtonVariant  } from '@/components/ui/Button'
+import { X, Check } from 'lucide-react'
+import {
+  Button,
+  type ButtonSize,
+  type ButtonVariant,
+} from '@/components/ui/Button'
 
 interface DeleteButtonProps {
   onDelete: () => void
@@ -31,12 +36,18 @@ export function DeleteButton({
 
   return (
     <Button
-      variant={confirmDelete ? 'softDanger' : variant}
+      variant={confirmDelete ? 'danger' : variant}
       size={size}
       onClick={handleClick}
       title={confirmDelete ? 'Click again to confirm' : 'Delete document'}
     >
-      {confirmDelete ? '✓ Confirm delete' : '×'}
+      {confirmDelete ? (
+        <span className="flex items-center gap-1">
+          <Check className="h-4 w-4" /> Confirm delete
+        </span>
+      ) : (
+        <X className="h-4 w-4" />
+      )}
     </Button>
   )
 }

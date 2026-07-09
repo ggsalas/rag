@@ -1,3 +1,4 @@
+import { ChevronDown } from 'lucide-react'
 import type { Library } from '@/types/library'
 import { useDocumentsData } from '@/hooks/data/useDocumentsData'
 import { SidebarDocumentItem } from './SidebarDocumentItem'
@@ -35,9 +36,11 @@ export function LibraryAccordionItem({
           >
             {library.name}
           </span>
-          <span className="text-muted-foreground text-sm">
-            {isExpanded ? '▼' : '▲'}
-          </span>
+          <ChevronDown
+            className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200 ${
+              isExpanded ? '' : '-rotate-90'
+            }`}
+          />
         </div>
       </div>
 
