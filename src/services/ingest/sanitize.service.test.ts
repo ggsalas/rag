@@ -60,10 +60,23 @@ describe('sanitize (conservative)', () => {
     expect(out).toContain('double  space')
   })
 
-  it('preserves markdown link syntax (not unwrapped)', () => {
+  it('unwraps markdown links, keeping the label and dropping the URL', () => {
+    // URLs are metadata, not human content; leaving them embedded pollutes
+    // BM25 tokenization and vector embeddings.
     const input = 'See [the article](https://example.com) for details.'
     const out = sanitize(input)
-    expect(out).toContain('[the article](https://example.com)')
+    expect(out).toContain('the article')
+    expect(out).toContain('for details.')
+    expect(out).not.toContain('https://example.com')
+    expect(out).not.toContain('](')
+  })
+
+  it('unwraps reference-style links', () => {
+    const input =
+      'See [the article][ref] for details.\n\n[ref]: https://example.com'
+    const out = sanitize(input)
+    expect(out).toContain('the article')
+    expect(out).not.toContain('[ref]')
   })
 
   it('preserves markdown tables including empty rows', () => {

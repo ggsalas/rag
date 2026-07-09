@@ -9,6 +9,7 @@ import {
   LLM_MODEL_ID,
   LLM_CONTEXT_CHUNKS,
   LLM_MAX_TOKENS,
+  LLM_NO_ANSWER_MESSAGE,
 } from '@/lib/constants'
 
 export type LLMProgressCallback = (progress: number, text: string) => void
@@ -90,6 +91,16 @@ export async function generateAnswer(
 
   const topResults = results.slice(0, LLM_CONTEXT_CHUNKS)
 
+  // No usable context: short-circuit with the canonical no-answer message
+  // instead of calling the LLM. Small models (Llama 3.2 1B) confabulate from
+  // pretraining knowledge when given an empty or off-topic context, so we
+  // enforce the refusal deterministically here.
+  if (topResults.length === 0) {
+    onToken(LLM_NO_ANSWER_MESSAGE, false)
+    onToken('', true)
+    return []
+  }
+
   const citations: LLMCitation[] = topResults.map((r, i) => ({
     index: i + 1,
     chunkId: r.chunkId,
@@ -98,13 +109,25 @@ export async function generateAnswer(
     chunkIndex: r.chunkIndex,
   }))
 
-  const context = topResults.map((r, i) => `[${i + 1}] ${r.text}`).join('\n\n')
+  const context = topResults
+    .map((r, i) => `[${i + 1}] ${r.text}`)
+    .join('\n\n')
+
+  // Task-framed prompt (not "You are an assistant..."): small chat-tuned
+  // models like Llama-3.2-1B refuse less when primed as an extractor.
+  // Explicit anti-hallucination guards are critical for models this size —
+  // without them, the model streams plausible-sounding filler until it hits
+  // max_tokens (e.g. fabricating other artists' discographies).
+  const systemPrompt =
+    'Task: answer the user question using ONLY facts that appear literally in the sources below. ' +
+    'The sources describe ONE specific document. Do not add other subjects, artists, works, dates, or facts that are not shown in the sources. Do not invent examples. Do not continue with related topics you might know from elsewhere.\n\n' +
+    'The sources may be paragraphs, headings, or lists — a heading followed by items IS the answer for questions about that heading (e.g. "## Discography" followed by album titles answers "what is the discography").\n\n' +
+    'Cite sources by placing [1] or [2] right after each fact you use.\n' +
+    'When you have covered the information present in the sources, stop — do not add extra content.\n\n' +
+    `Sources:\n${context}`
 
   const messages = [
-    {
-      role: 'system' as const,
-      content: `Answer using ONLY the provided sources. Place citation numbers like [1] or [2] immediately after each relevant sentence — never group them at the end. Be concise.\n\nSources:\n${context}`,
-    },
+    { role: 'system' as const, content: systemPrompt },
     { role: 'user' as const, content: query },
   ]
 

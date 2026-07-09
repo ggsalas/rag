@@ -81,6 +81,16 @@ export async function searchHybrid(
   const index = indexes.get(libraryId)
   if (!index) return []
 
+  // Orama silently falls back to default 50/50 weights when either weight is
+  // exactly 0 (its internal `hybridWeights.text && hybridWeights.vector` check
+  // is truthy-based, not `!== undefined`). Clamp to a tiny floor to keep the
+  // slider extremes (0% / 100%) actually functional.
+  const raw = weights ?? { text: 0.5, vector: 0.5 }
+  const effectiveWeights = {
+    text: Math.max(0.001, raw.text),
+    vector: Math.max(0.001, raw.vector),
+  }
+
   const results = await search(index, {
     mode: 'hybrid',
     term,
@@ -90,7 +100,7 @@ export async function searchHybrid(
     limit: topK ?? DEFAULT_MAX_RESULTS,
     includeVectors: false,
     similarity: 0.0,
-    hybridWeights: weights ?? { text: 0.5, vector: 0.5 },
+    hybridWeights: effectiveWeights,
   })
 
   return results.hits.map((hit) => ({

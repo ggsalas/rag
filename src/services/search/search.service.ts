@@ -1,6 +1,10 @@
 import { embed } from '@/services/embedding/embedding.service'
 import { searchHybrid } from '@/services/embedding/vector-store'
-import { DEFAULT_MAX_RESULTS, DEFAULT_MIN_SCORE } from '@/lib/constants'
+import {
+  DEFAULT_MAX_RESULTS,
+  DEFAULT_MIN_SCORE,
+  MIN_ABSOLUTE_SCORE,
+} from '@/lib/constants'
 import type { SearchResult, HybridWeights } from '@/types/search'
 
 /** Performs hybrid search (BM25 + semantic) within a library */
@@ -35,9 +39,15 @@ export async function search(
     sectionPath: r.sectionPath,
   }))
 
-  // Filter by relative score threshold: discard results below minScore% of the top result
-  const threshold = minScore ?? DEFAULT_MIN_SCORE
   if (results.length === 0) return results
+
+  // Two-tier filter:
+  //   • Relative cutoff (user-tunable): drop chunks below `minScore`% of the top result.
+  //   • Absolute cutoff: drop anything below `MIN_ABSOLUTE_SCORE` — prevents the
+  //     "best of the bad" case where the only match is a stem hit in unrelated
+  //     content, which would otherwise dominate and mislead the LLM.
+  const threshold = minScore ?? DEFAULT_MIN_SCORE
   const topScore = Math.max(...results.map((r) => r.score))
-  return results.filter((r) => r.score >= topScore * (threshold / 100))
+  const floor = Math.max(topScore * (threshold / 100), MIN_ABSOLUTE_SCORE)
+  return results.filter((r) => r.score >= floor)
 }

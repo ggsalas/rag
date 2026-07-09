@@ -21,7 +21,7 @@ Users organize documents into **Libraries**. Each library is an independent coll
 | LLM (AI mode) | @mlc-ai/web-llm           | 0.x (WebGPU, main thread)                       |
 | PDF Parsing   | @llamaindex/liteparse-wasm | 2.x (PDFium-based, WASM)                       |
 | DOCX Parsing  | mammoth                   | 1.x                                             |
-| MD sanitize   | remark (unified)          | 15.x (AST-based, conservative)                 |
+| MD sanitize   | remark (unified)          | 15.x (AST-based sanitize + content-extractor)  |
 | Worker Comms  | Comlink                   | 4.x                                             |
 | Testing       | Vitest                    | 4.x                                             |
 | PWA           | vite-plugin-pwa           | 1.x                                             |

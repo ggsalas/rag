@@ -2,7 +2,8 @@ import { generateId } from '@/lib/utils'
 import { parseFile } from './parser.service'
 import { chunkText, chunkMarkdown } from './chunking.service'
 import { sanitize } from './sanitize.service'
-import { embedBatch } from '@/services/embedding/embedding.service'
+import { extractMainContent } from './content-extractor.service'
+import { embedPassages } from '@/services/embedding/embedding.service'
 import { insertChunks } from '@/services/embedding/vector-store'
 import { db } from '@/infrastructure/db'
 import {
@@ -62,13 +63,18 @@ async function processDocument(
       )
     })
 
-    // Sanitize before chunking to strip nav chrome, escape sequences, orphan URLs, etc.
+    // Sanitize (Unicode normalization, invisible chars, AST-safe whitespace).
     const cleanText = sanitize(parseResult.text)
+
+    // Content extraction (Readability-inspired, markdown-native): drops
+    // boilerplate sections like "References", "See also", "External links",
+    // "Notes" — the noisy tails of Wikipedia dumps and academic PDFs.
+    const extractedText = extractMainContent(cleanText)
 
     await saveDocumentContent({
       documentId: docMeta.id,
       libraryId,
-      text: cleanText,
+      text: extractedText,
     })
 
     await updateDocumentStatus(docMeta.id, 'chunking')
@@ -81,8 +87,8 @@ async function processDocument(
       docMeta.name.endsWith('.md') ||
       docMeta.name.endsWith('.markdown')
     const chunkDataList = isStructuredMarkdown
-      ? chunkMarkdown(cleanText)
-      : chunkText(cleanText)
+      ? chunkMarkdown(extractedText)
+      : chunkText(extractedText)
 
     if (chunkDataList.length === 0) {
       throw new Error('No text could be extracted from document')
@@ -92,7 +98,7 @@ async function processDocument(
     await updateProgress(docMeta.id, PROGRESS.EMBEDDING[0])
 
     const texts = chunkDataList.map((c) => c.text)
-    const embeddings = await embedBatch(texts, async (current, total) => {
+    const embeddings = await embedPassages(texts, async (current, total) => {
       await updateProgress(
         docMeta.id,
         mapRange(current, total, PROGRESS.EMBEDDING),

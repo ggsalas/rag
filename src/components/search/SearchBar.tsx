@@ -1,12 +1,36 @@
-import {
-  useState,
-  useRef,
-  useEffect,
-  type FormEvent,
-  type ChangeEvent,
-} from 'react'
+import { useState, useRef, useEffect, type FormEvent } from 'react'
 import type { ModelStatus } from '@/store/app.store'
 import type { HybridWeights } from '@/types/search'
+import { HYBRID_WEIGHT_PRESETS, type HybridWeightPreset } from '@/lib/constants'
+
+/** Maps a HybridWeights value to its matching preset name (falls back to 'balanced'). */
+function presetOf(w: HybridWeights | undefined): HybridWeightPreset {
+  if (!w) return 'balanced'
+  for (const [name, preset] of Object.entries(HYBRID_WEIGHT_PRESETS)) {
+    if (preset.text === w.text && preset.vector === w.vector) {
+      return name as HybridWeightPreset
+    }
+  }
+  // Legacy: existing libraries saved from the old slider store non-preset values.
+  // Bucket by which side dominates so the UI reflects a plausible current choice.
+  if (w.vector >= 0.8) return 'semantic'
+  if (w.text >= 0.8) return 'keyword'
+  return 'balanced'
+}
+
+const PRESET_LABELS: Record<HybridWeightPreset, string> = {
+  keyword: 'Keyword',
+  balanced: 'Balanced',
+  semantic: 'Semantic',
+}
+
+const PRESET_TITLES: Record<HybridWeightPreset, string> = {
+  keyword:
+    'Prioritize exact term matches — better for proper nouns and specific vocabulary',
+  balanced: 'Mix keyword and semantic matching evenly',
+  semantic:
+    'Prioritize meaning over exact words — better for natural-language queries',
+}
 
 interface SearchBarProps {
   onSearch: (query: string) => void
@@ -43,16 +67,11 @@ export function SearchBar({
   onLlmMaxTokensChange,
 }: SearchBarProps) {
   const [inputValue, setInputValue] = useState(initialQuery)
-  const [localWeight, setLocalWeight] = useState(hybridWeights?.vector ?? 0.5)
   const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     if (!notFocused) inputRef.current?.focus({ preventScroll: true })
   }, [notFocused])
-
-  useEffect(() => {
-    if (hybridWeights !== undefined) setLocalWeight(hybridWeights.vector)
-  }, [hybridWeights?.vector])
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault()
@@ -66,13 +85,11 @@ export function SearchBar({
     inputRef.current?.focus()
   }
 
-  const handleSliderChange = (e: ChangeEvent<HTMLInputElement>) => {
-    setLocalWeight(parseFloat(e.target.value))
+  const handlePresetSelect = (preset: HybridWeightPreset) => {
+    onWeightsChange?.(HYBRID_WEIGHT_PRESETS[preset])
   }
 
-  const handleSliderRelease = () => {
-    onWeightsChange?.({ vector: localWeight, text: 1 - localWeight })
-  }
+  const currentPreset = presetOf(hybridWeights)
 
   const isDisabled = modelStatus !== 'ready'
   const hasText = inputValue.trim().length > 0
@@ -153,124 +170,138 @@ export function SearchBar({
             <div className="grid grid-rows-[0fr] opacity-0 group-focus-within:grid-rows-[1fr] group-focus-within:opacity-100 transition-[grid-template-rows,opacity] duration-200 delay-[150ms] group-focus-within:delay-0">
               <div className="overflow-hidden">
                 <div className="border-t border-gray-200 px-3 py-2">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    {onAiModeToggle && (
-                      <>
-                        <button
-                          type="button"
-                          onClick={onAiModeToggle}
-                          disabled={isDisabled}
-                          className={`flex items-center gap-1 text-xs font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
-                            isAiMode
-                              ? 'text-blue-600'
-                              : 'text-gray-400 hover:text-gray-600'
-                          }`}
-                        >
-                          <svg
-                            className="h-3 w-3"
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
+                  <div className="flex items-center gap-2 flex-wrap justify-between">
+                    <div className="flex items-center gap-2">
+                      {onAiModeToggle && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={onAiModeToggle}
+                            disabled={isDisabled}
+                            className={`flex items-center gap-1 text-xs font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                              isAiMode
+                                ? 'text-blue-600'
+                                : 'text-gray-400 hover:text-gray-600'
+                            }`}
                           >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={2}
-                              d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z"
-                            />
-                          </svg>
-                          AI answer
-                        </button>
-                        {isAiMode &&
-                          llmMaxTokens !== undefined &&
-                          onLlmMaxTokensChange && (
-                            <select
-                              value={llmMaxTokens}
-                              onChange={(e) =>
-                                onLlmMaxTokensChange(Number(e.target.value))
-                              }
-                              disabled={isDisabled}
-                              className="text-xs text-gray-600 bg-white border border-gray-200 rounded px-1 py-0.5 outline-none focus:border-blue-500 disabled:opacity-50"
+                            <svg
+                              className="h-3 w-3"
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
                             >
-                              <option value={256}>Short</option>
-                              <option value={512}>Default</option>
-                              <option value={1024}>Large</option>
-                            </select>
-                          )}
-                        <div className="w-px h-4 bg-gray-200 mx-1" />
-                      </>
-                    )}
-
-                    {showWeights && (
-                      <>
-                        <span className="text-xs text-gray-500 whitespace-nowrap">
-                          Keyword
-                        </span>
-                        <input
-                          type="range"
-                          min="0"
-                          max="1"
-                          step="0.1"
-                          value={localWeight}
-                          onChange={handleSliderChange}
-                          onMouseUp={handleSliderRelease}
-                          onTouchEnd={handleSliderRelease}
-                          disabled={isDisabled}
-                          className="flex-1 min-w-20 h-1.5 accent-blue-500 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                        />
-                        <span className="text-xs text-gray-500 whitespace-nowrap">
-                          Semantic
-                        </span>
-                      </>
-                    )}
-
-                    {maxResults !== undefined && onMaxResultsChange && (
-                      <>
-                        <div className="w-px h-4 bg-gray-200 mx-1" />
-                        <span className="text-xs text-gray-500 whitespace-nowrap">
-                          Max results
-                        </span>
-                        <input
-                          type="number"
-                          min="1"
-                          max="100"
-                          value={maxResults}
-                          onChange={(e) =>
-                            onMaxResultsChange(
-                              Math.max(1, parseInt(e.target.value) || 1),
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z"
+                              />
+                            </svg>
+                            AI answer
+                          </button>
+                          {isAiMode &&
+                            llmMaxTokens !== undefined &&
+                            onLlmMaxTokensChange && (
+                              <select
+                                value={llmMaxTokens}
+                                onChange={(e) =>
+                                  onLlmMaxTokensChange(Number(e.target.value))
+                                }
+                                disabled={isDisabled}
+                                className="text-xs text-gray-600 bg-white border border-gray-200 rounded px-1 py-0.5 outline-none focus:border-blue-500 disabled:opacity-50"
+                              >
+                                <option value={256}>Short</option>
+                                <option value={512}>Default</option>
+                                <option value={1024}>Large</option>
+                              </select>
+                            )}
+                          <div className="w-px h-4 bg-gray-200 mx-1" />
+                        </>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {showWeights && (
+                        <div
+                          role="radiogroup"
+                          aria-label="Search matching mode"
+                          className="inline-flex rounded-md border border-gray-200 overflow-hidden"
+                        >
+                          {(
+                            Object.keys(
+                              HYBRID_WEIGHT_PRESETS,
+                            ) as HybridWeightPreset[]
+                          ).map((preset) => {
+                            const active = currentPreset === preset
+                            return (
+                              <button
+                                key={preset}
+                                type="button"
+                                role="radio"
+                                aria-checked={active}
+                                title={PRESET_TITLES[preset]}
+                                onClick={() => handlePresetSelect(preset)}
+                                disabled={isDisabled}
+                                className={`px-2 py-0.5 text-xs font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                                  active
+                                    ? 'bg-blue-500 text-white'
+                                    : 'bg-white text-gray-600 hover:bg-gray-50'
+                                }`}
+                              >
+                                {PRESET_LABELS[preset]}
+                              </button>
                             )
-                          }
-                          disabled={isDisabled}
-                          className="w-12 text-xs text-center border border-gray-200 rounded px-1 py-0.5 outline-none focus:border-blue-500 disabled:opacity-50 text-black"
-                        />
-                      </>
-                    )}
+                          })}
+                        </div>
+                      )}
 
-                    {minScore !== undefined && onMinScoreChange && (
-                      <>
-                        <div className="w-px h-4 bg-gray-200 mx-1" />
-                        <span className="text-xs text-gray-500 whitespace-nowrap">
-                          Min score
-                        </span>
-                        <input
-                          type="number"
-                          min="0"
-                          max="100"
-                          value={minScore}
-                          onChange={(e) =>
-                            onMinScoreChange(
-                              Math.min(
-                                100,
-                                Math.max(0, parseInt(e.target.value) || 0),
-                              ),
-                            )
-                          }
-                          disabled={isDisabled}
-                          className="w-12 text-xs text-center border border-gray-200 rounded px-1 py-0.5 outline-none focus:border-blue-500 disabled:opacity-50 text-black"
-                        />
-                        <span className="text-xs text-gray-400">%</span>
-                      </>
-                    )}
+                      {maxResults !== undefined && onMaxResultsChange && (
+                        <>
+                          <div className="w-px h-4 bg-gray-200 mx-1" />
+                          <span className="text-xs text-gray-500 whitespace-nowrap">
+                            Max results
+                          </span>
+                          <input
+                            type="number"
+                            min="1"
+                            max="100"
+                            value={maxResults}
+                            onChange={(e) =>
+                              onMaxResultsChange(
+                                Math.max(1, parseInt(e.target.value) || 1),
+                              )
+                            }
+                            disabled={isDisabled}
+                            className="w-12 text-xs text-center border border-gray-200 rounded px-1 py-0.5 outline-none focus:border-blue-500 disabled:opacity-50 text-black"
+                          />
+                        </>
+                      )}
+
+                      {minScore !== undefined && onMinScoreChange && (
+                        <>
+                          <div className="w-px h-4 bg-gray-200 mx-1" />
+                          <span className="text-xs text-gray-500 whitespace-nowrap">
+                            Min score
+                          </span>
+                          <input
+                            type="number"
+                            min="0"
+                            max="100"
+                            value={minScore}
+                            onChange={(e) =>
+                              onMinScoreChange(
+                                Math.min(
+                                  100,
+                                  Math.max(0, parseInt(e.target.value) || 0),
+                                ),
+                              )
+                            }
+                            disabled={isDisabled}
+                            className="w-12 text-xs text-center border border-gray-200 rounded px-1 py-0.5 outline-none focus:border-blue-500 disabled:opacity-50 text-black"
+                          />
+                          <span className="text-xs text-gray-400">%</span>
+                        </>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>

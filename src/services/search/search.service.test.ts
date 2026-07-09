@@ -146,4 +146,66 @@ describe('search.service', () => {
       customWeights,
     )
   })
+
+  it('drops all results when the top score is below the absolute floor', async () => {
+    // Every score sits under MIN_ABSOLUTE_SCORE (0.5) — the "best of the bad"
+    // case. Even though the relative threshold (70% of top = 0.28) would let
+    // these through, the absolute floor rejects them.
+    mockEmbed.mockResolvedValue(Array(384).fill(0.1))
+    mockSearchHybrid.mockResolvedValue([
+      {
+        chunkId: 'c-1',
+        documentId: 'd-1',
+        documentName: 'weak.md',
+        text: 'weak match',
+        score: 0.4,
+        chunkIndex: 0,
+        headingText: '',
+        sectionPath: [],
+      },
+      {
+        chunkId: 'c-2',
+        documentId: 'd-1',
+        documentName: 'weak.md',
+        text: 'weaker match',
+        score: 0.3,
+        chunkIndex: 1,
+        headingText: '',
+        sectionPath: [],
+      },
+    ])
+
+    const results = await search('glitter', 'lib-1')
+    expect(results).toEqual([])
+  })
+
+  it('keeps strong results and drops weak ones below the absolute floor', async () => {
+    mockEmbed.mockResolvedValue(Array(384).fill(0.1))
+    mockSearchHybrid.mockResolvedValue([
+      {
+        chunkId: 'strong',
+        documentId: 'd-1',
+        documentName: 'doc.md',
+        text: 'strong match',
+        score: 0.85,
+        chunkIndex: 0,
+        headingText: '',
+        sectionPath: [],
+      },
+      {
+        chunkId: 'weak',
+        documentId: 'd-1',
+        documentName: 'doc.md',
+        text: 'weak match',
+        score: 0.4,
+        chunkIndex: 1,
+        headingText: '',
+        sectionPath: [],
+      },
+    ])
+
+    const results = await search('discography', 'lib-1')
+    expect(results).toHaveLength(1)
+    expect(results[0]!.chunkId).toBe('strong')
+  })
 })

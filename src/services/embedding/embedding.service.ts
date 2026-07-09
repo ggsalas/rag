@@ -3,6 +3,7 @@ import { getEmbeddingWorker } from '@/infrastructure/worker-pool'
 import type {
   EmbeddingModelStatus,
   EmbeddingProgressCallback,
+  EmbeddingRole,
 } from '@/workers/embedding.worker'
 
 /** Initializes the embedding model in the worker */
@@ -17,20 +18,30 @@ export async function getModelStatus(): Promise<EmbeddingModelStatus> {
   return worker.getStatus()
 }
 
-/** Generates an embedding vector for a single text string */
+/**
+ * Generates an embedding vector for a search query. Callers embedding indexed
+ * document passages should use `embedPassages` instead — the two use different
+ * role prefixes required by the E5 embedding model.
+ */
 export async function embed(text: string): Promise<number[]> {
   const worker = getEmbeddingWorker()
-  return worker.generateEmbedding(text)
+  return worker.generateEmbedding(text, 'query')
 }
 
-/** Generates embedding vectors for multiple texts with optional progress tracking */
-export async function embedBatch(
+/**
+ * Generates embedding vectors for document passages (indexed chunks). Uses
+ * the `passage:` role prefix required by the E5 embedding model.
+ */
+export async function embedPassages(
   texts: string[],
   onProgress?: EmbeddingProgressCallback,
 ): Promise<number[][]> {
   const worker = getEmbeddingWorker()
   return worker.generateEmbeddings(
     texts,
+    'passage',
     onProgress ? proxy(onProgress) : undefined,
   )
 }
+
+export type { EmbeddingRole }
