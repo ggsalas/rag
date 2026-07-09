@@ -73,7 +73,7 @@ export function MainPanel({ children, noAddDocment }: MainPanelProps) {
     return (
       <div className="flex-1 flex items-center justify-center">
         <div className="text-center">
-          <p className="text-red-600 font-medium">Library not found</p>
+          <p className="text-foreground font-medium">Library not found</p>
           <Link
             to="/libraries"
             className="text-foreground hover:underline text-sm mt-2 inline-block"

@@ -1,15 +1,12 @@
 @import 'tailwindcss';
 
-@custom-variant dark (&:where(.dark, .dark *));
-
 /*
- * Black & white semantic theme (light values).
+ * Monochrome (black & white) semantic theme.
  * Components use these tokens (bg-background, text-foreground, bg-primary, …)
- * instead of hardcoded palette colors, so a dark palette can be enabled later
- * just by overriding these vars under `.dark` (see skeleton at the bottom).
- * Semantic status colors (red / yellow) intentionally keep the Tailwind palette
- * for danger/error/warning feedback. Green is not used — success/high states use
- * a neutral light background (bg-muted) instead.
+ * instead of hardcoded palette colors, so the whole UI is grayscale and the
+ * dark theme is just an override of these vars under `prefers-color-scheme`.
+ * There are no red/yellow/green semantic colors — status/danger are conveyed
+ * with neutral shades (foreground / muted) and text.
  */
 @theme {
   --color-background: #ffffff;
@@ -20,10 +17,11 @@
 
   --color-border: #e5e7eb;
   --color-input: #d1d5db;
-  --color-ring: #000000;
+  --color-ring: #111827;
 
-  --color-primary: #000000;
+  --color-primary: #111827;
   --color-primary-foreground: #ffffff;
+  --color-primary-hover: #1f2937;
 
   --color-secondary: #e5e7eb;
   --color-secondary-foreground: #111827;
@@ -32,25 +30,30 @@
   --color-accent-foreground: #111827;
 }
 
-/*
- * Dark theme — enable later by adding the `dark` class on <html>:
- *
- * .dark {
- *   --color-background: #0a0a0a;
- *   --color-foreground: #fafafa;
- *   --color-muted: #1f1f1f;
- *   --color-muted-foreground: #a1a1aa;
- *   --color-border: #262626;
- *   --color-input: #333333;
- *   --color-ring: #ffffff;
- *   --color-primary: #ffffff;
- *   --color-primary-foreground: #0a0a0a;
- *   --color-secondary: #262626;
- *   --color-secondary-foreground: #fafafa;
- *   --color-accent: #262626;
- *   --color-accent-foreground: #fafafa;
- * }
- */
+/* Dark theme — activates automatically with the OS/browser preference. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-background: #0a0a0a;
+    --color-foreground: #fafafa;
+
+    --color-muted: #1f1f1f;
+    --color-muted-foreground: #a1a1aa;
+
+    --color-border: #262626;
+    --color-input: #333333;
+    --color-ring: #fafafa;
+
+    --color-primary: #fafafa;
+    --color-primary-foreground: #0a0a0a;
+    --color-primary-hover: #e5e5e5;
+
+    --color-secondary: #262626;
+    --color-secondary-foreground: #fafafa;
+
+    --color-accent: #262626;
+    --color-accent-foreground: #fafafa;
+  }
+}
 
 body {
   @apply bg-background text-foreground min-h-screen;

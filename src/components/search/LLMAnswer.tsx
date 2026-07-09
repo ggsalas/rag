@@ -1,14 +1,10 @@
 import type { LLMCitation } from '@/services/llm/llm.service'
-import type { ModelStatus } from '@/store/app.store'
 
 interface LLMAnswerProps {
   answer: string
   citations: LLMCitation[]
   isGenerating: boolean
-  llmStatus: ModelStatus
-  llmProgress: number
   error: string | null
-  loadError?: string | null
   onCitationClick: (citation: LLMCitation) => void
 }
 
@@ -23,7 +19,7 @@ function AnswerText({
 }) {
   const parts = text.split(/(\[\d+\])/)
   return (
-    <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap">
+    <p className="text-base text-foreground leading-relaxed whitespace-pre-wrap">
       {parts.map((part, i) => {
         const match = part.match(/^\[(\d+)\]$/)
         if (match?.[1]) {
@@ -53,54 +49,15 @@ export function LLMAnswer({
   answer,
   citations,
   isGenerating,
-  llmStatus,
-  llmProgress,
   error,
-  loadError,
   onCitationClick,
 }: LLMAnswerProps) {
-  if (llmStatus === 'loading') {
-    return (
-      <div className="rounded-lg border border-border bg-muted p-4">
-        <div className="flex items-center gap-2 mb-2">
-          <SparklesIcon className="h-4 w-4 text-foreground shrink-0" />
-          <span className="text-sm font-medium text-foreground">
-            Loading AI model…
-          </span>
-        </div>
-        <div className="h-1.5 bg-secondary rounded-full overflow-hidden">
-          <div
-            className="h-full bg-primary rounded-full transition-all duration-300"
-            style={{ width: `${llmProgress}%` }}
-          />
-        </div>
-        <p className="mt-1.5 text-xs text-muted-foreground">
-          {llmProgress}% — downloading Llama 3.2 1B (~880 MB, cached after first
-          load)
-        </p>
-      </div>
-    )
-  }
-
-  if (llmStatus === 'error') {
-    return (
-      <div className="rounded-lg border border-red-200 bg-red-50 p-4">
-        <div className="flex items-start gap-2">
-          <SparklesIcon className="h-4 w-4 text-red-500 shrink-0 mt-0.5" />
-          <span className="text-sm text-red-700">
-            {loadError ?? 'Failed to load AI model.'}
-          </span>
-        </div>
-      </div>
-    )
-  }
-
   if (error) {
     return (
-      <div className="rounded-lg border border-red-200 bg-red-50 p-4">
+      <div className="rounded-lg border border-border bg-muted p-4">
         <div className="flex items-center gap-2">
-          <SparklesIcon className="h-4 w-4 text-red-500 shrink-0" />
-          <span className="text-sm text-red-700">{error}</span>
+          <SparklesIcon className="h-4 w-4 text-foreground shrink-0" />
+          <span className="text-sm text-foreground">{error}</span>
         </div>
       </div>
     )
@@ -109,7 +66,7 @@ export function LLMAnswer({
   if (!isGenerating && !answer) return null
 
   return (
-    <div className="rounded-lg border border-border bg-muted p-4">
+    <div className="rounded-lg border border-border p-4">
       <div className="flex items-center gap-2 mb-3">
         <SparklesIcon className="h-4 w-4 text-foreground shrink-0" />
         <span className="text-sm font-medium text-foreground">AI Answer</span>

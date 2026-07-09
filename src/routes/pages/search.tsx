@@ -4,7 +4,8 @@ import {
   useLocation,
   useNavigate,
 } from 'react-router'
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { toast } from 'sonner'
 import { useAppStore } from '@/store/app.store'
 import { useSearch } from '@/hooks/useSearch'
 import { useOramaHydration } from '@/hooks/useOramaHydration'
@@ -12,10 +13,15 @@ import { useLLMAnswer } from '@/hooks/useLLMAnswer'
 import { SearchBar } from '@/components/search/SearchBar'
 import { ResultList } from '@/components/search/ResultList'
 import { LLMAnswer } from '@/components/search/LLMAnswer'
+import { ModelDownloadModal } from '@/components/search/ModelDownloadModal'
+import { ModelDownloadToast } from '@/components/search/ModelDownloadToast'
 import { MainPanel } from '@/components/sidebar/MainPanel'
 import type { LLMCitation } from '@/services/llm/llm.service'
 import { LLM_CONTEXT_CHUNKS } from '@/lib/constants'
 import type { SearchResult } from '@/types/search'
+
+/** Stable id so the loading toast and its success/error transition target the same toast. */
+const LLM_DOWNLOAD_TOAST_ID = 'llm-model-download'
 
 /** Returns a stable string key representing which doc+chunk pairs are in a context window */
 function chunkContextKey(
@@ -84,7 +90,6 @@ export function SearchPage() {
     answeredQuery,
     isGenerating,
     llmStatus,
-    llmProgress,
     llmError,
     loadError,
     generate,
@@ -99,6 +104,55 @@ export function SearchPage() {
         }
       : {},
   )
+
+  const [showModelModal, setShowModelModal] = useState(false)
+  // Non-null while a download toast is active — gates the finalize effect below.
+  const downloadToastActiveRef = useRef(false)
+
+  // Shows the live download-progress toast (idempotent via the fixed id). Its
+  // content subscribes to the store, so it updates itself as the model downloads.
+  const showDownloadToast = useCallback(() => {
+    if (downloadToastActiveRef.current) return
+    downloadToastActiveRef.current = true
+    toast(<ModelDownloadToast />, {
+      id: LLM_DOWNLOAD_TOAST_ID,
+      duration: Infinity,
+    })
+  }, [])
+
+  // Finalize the download toast once the model finishes loading or fails.
+  useEffect(() => {
+    if (!downloadToastActiveRef.current) return
+    if (llmStatus === 'ready') {
+      // Keep the SAME toast (it now shows 100% / "AI model ready") and just
+      // dismiss it after a moment — swapping in a separate success toast reads
+      // as confusing.
+      downloadToastActiveRef.current = false
+      setTimeout(() => toast.dismiss(LLM_DOWNLOAD_TOAST_ID), 2000)
+    } else if (llmStatus === 'error') {
+      toast.error(loadError ?? 'Failed to download the AI model', {
+        id: LLM_DOWNLOAD_TOAST_ID,
+        duration: 6000,
+      })
+      downloadToastActiveRef.current = false
+    }
+  }, [llmStatus, loadError])
+
+  // AI toggle: enabling for the first time needs a model download, so we confirm
+  // via a modal first. Turning it off (or when already downloaded) is immediate.
+  const handleAiToggle = useCallback(() => {
+    if (isAiMode || llmStatus === 'ready') {
+      toggleAiMode()
+      return
+    }
+    setShowModelModal(true)
+  }, [isAiMode, llmStatus, toggleAiMode])
+
+  const handleAcceptDownload = useCallback(() => {
+    setShowModelModal(false)
+    showDownloadToast()
+    toggleAiMode()
+  }, [showDownloadToast, toggleAiMode])
 
   // Persist completed answer to route state so it survives navigation to documents and back
   useEffect(() => {
@@ -133,6 +187,7 @@ export function SearchPage() {
       return
     }
     if (llmStatus === 'idle') {
+      showDownloadToast()
       loadLLM()
       return
     }
@@ -166,13 +221,9 @@ export function SearchPage() {
     }
   }
 
-  const showLLMAnswer =
-    isAiMode &&
-    (llmStatus === 'loading' ||
-      llmStatus === 'error' ||
-      isGenerating ||
-      !!answer ||
-      !!llmError)
+  // Model download progress/errors now live in a toast (not below the search
+  // bar), so this panel only shows the generated answer and generation errors.
+  const showLLMAnswer = isAiMode && (isGenerating || !!answer || !!llmError)
 
   // Forwarded to ResultCard and LLMAnswer so they can include it in navigation state,
   // allowing the document viewer to pass it back when the user returns to search.
@@ -197,7 +248,7 @@ export function SearchPage() {
           onMinScoreChange={(n) => { setFocusedChunkId(null); setMinScore(n) }}
           notFocused={!!focusedChunkId}
           isAiMode={isAiMode}
-          onAiModeToggle={toggleAiMode}
+          onAiModeToggle={handleAiToggle}
           llmMaxTokens={llmMaxTokens}
           onLlmMaxTokensChange={(n) => { setFocusedChunkId(null); setLlmMaxTokens(n) }}
         />
@@ -208,10 +259,7 @@ export function SearchPage() {
               answer={answer}
               citations={citations}
               isGenerating={isGenerating}
-              llmStatus={llmStatus}
-              llmProgress={llmProgress}
               error={llmError}
-              loadError={loadError}
               onCitationClick={(c) => setFocusedChunkId(c.chunkId)}
             />
           </div>
@@ -229,6 +277,12 @@ export function SearchPage() {
           />
         </div>
       </div>
+
+      <ModelDownloadModal
+        open={showModelModal}
+        onAccept={handleAcceptDownload}
+        onCancel={() => setShowModelModal(false)}
+      />
     </MainPanel>
   )
 }

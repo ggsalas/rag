@@ -44,7 +44,7 @@ export function DocumentItem({
             </div>
           </div>
           {hasError && document.error && (
-            <div className="text-xs text-red-600 mt-1">{document.error}</div>
+            <div className="text-xs text-foreground mt-1">{document.error}</div>
           )}
         </td>
         <td className="px-6 py-4 whitespace-nowrap">
@@ -121,11 +121,11 @@ function getStatusColor(status: DocumentMeta['status']) {
     case 'parsing':
     case 'chunking':
     case 'embedding':
-      return 'bg-yellow-100 text-yellow-800'
+      return 'bg-muted text-muted-foreground'
     case 'indexed':
       return 'bg-muted text-foreground'
     case 'error':
-      return 'bg-red-100 text-red-800'
+      return 'bg-foreground text-background'
     default:
       return 'bg-muted text-foreground'
   }

@@ -103,8 +103,8 @@ export function DocumentViewerPage() {
     return (
       <MainPanel>
         <div className="p-4">
-          <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-            <p className="text-red-800">{error}</p>
+          <div className="bg-muted border border-border rounded-lg p-4">
+            <p className="text-foreground">{error}</p>
           </div>
         </div>
       </MainPanel>
@@ -134,7 +134,7 @@ export function DocumentViewerPage() {
         />
 
         <div className="max-w-5xl mx-auto px-6 py-6">
-          <div className="font-mono">
+          <div className="font-mono text-sm">
             {content ? (
               <div className="prose max-w-none">
                 <HighlightedText

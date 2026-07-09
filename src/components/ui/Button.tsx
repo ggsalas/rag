@@ -29,14 +29,15 @@ const variantStyles: Record<ButtonVariant, string> = {
   // Filled CTA. When disabled it drops the fill and becomes an outline with
   // gray text — matching the outline family instead of a dimmed black block.
   primary:
-    'bg-primary text-primary-foreground border-primary hover:bg-gray-800 focus:ring-ring disabled:bg-transparent disabled:text-muted-foreground disabled:border-border',
+    'bg-primary text-primary-foreground border-primary hover:bg-primary-hover focus:ring-ring disabled:bg-transparent disabled:text-muted-foreground disabled:border-border',
   secondary:
     'bg-transparent border-border text-foreground hover:bg-accent focus:ring-ring disabled:opacity-50',
+  // Monochrome danger: a stronger (foreground) outline instead of red.
   danger:
-    'bg-transparent border-border text-red-600 hover:bg-red-50 focus:ring-red-500 disabled:opacity-50',
+    'bg-transparent border-foreground text-foreground hover:bg-accent focus:ring-ring disabled:opacity-50',
   soft: 'bg-transparent border-border text-foreground hover:bg-accent focus:ring-ring disabled:opacity-50',
   softDanger:
-    'bg-transparent border-border text-red-700 hover:bg-red-50 focus:ring-red-400 disabled:opacity-50',
+    'bg-transparent border-foreground text-foreground hover:bg-accent focus:ring-ring disabled:opacity-50',
   ghost:
     'bg-transparent border-transparent text-foreground hover:bg-accent focus:ring-ring disabled:opacity-50',
 }

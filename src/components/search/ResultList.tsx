@@ -139,7 +139,7 @@ export function ResultList({
   return (
     <div className="space-y-3">
       <p className="text-sm text-muted-foreground">
-        {results.length} {results.length === 1 ? 'result' : 'results'} found
+        {results.length} {results.length === 1 ? 'chunk' : 'chunks'} found
       </p>
       {results.map((result) => (
         <ResultCard
@@ -149,7 +149,8 @@ export function ResultList({
           savedAi={savedAi}
           llmCitationIndex={
             citations
-              ? (citations.find((c) => c.chunkId === result.chunkId)?.index ?? null)
+              ? (citations.find((c) => c.chunkId === result.chunkId)?.index ??
+                null)
               : undefined
           }
         />

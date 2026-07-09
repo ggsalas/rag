@@ -98,7 +98,7 @@ export function SearchBar({
         <div
           className={`
             absolute inset-x-0 top-0 z-10 rounded-lg border bg-background
-            focus-within:border-double focus-within:border-[3px] focus-within:border-foreground
+            focus-within:border-border focus-within:border-[3px] focus-within:border-foreground
             ${isDisabled ? 'border-border bg-muted' : 'border-input'}
           `}
         >
@@ -143,7 +143,7 @@ export function SearchBar({
             <button
               type="submit"
               disabled={isDisabled || !hasText}
-              className="shrink-0 px-3 py-1 text-sm font-medium rounded-md border border-primary bg-primary text-primary-foreground hover:bg-gray-800 disabled:bg-transparent disabled:text-muted-foreground disabled:border-border disabled:cursor-not-allowed transition-colors"
+              className="shrink-0 px-3 py-1 text-sm font-medium rounded-md border border-primary bg-primary text-primary-foreground hover:bg-primary-hover disabled:bg-transparent disabled:text-muted-foreground disabled:border-border disabled:cursor-not-allowed transition-colors"
             >
               Ask
             </button>
@@ -216,7 +216,7 @@ export function SearchBar({
                           onMouseUp={handleSliderRelease}
                           onTouchEnd={handleSliderRelease}
                           disabled={isDisabled}
-                          className="flex-1 min-w-20 h-1.5 accent-black cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                          className="flex-1 min-w-20 h-1.5 accent-primary cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                         />
                         <span className="text-xs text-muted-foreground whitespace-nowrap">
                           Semantic
@@ -280,13 +280,13 @@ export function SearchBar({
       </div>
 
       {modelStatus === 'loading' && (
-        <p className="mt-2 text-sm text-yellow-600">
+        <p className="mt-2 text-sm text-muted-foreground">
           Loading embedding model... Search will be available once the model is
           ready.
         </p>
       )}
       {modelStatus === 'error' && (
-        <p className="mt-2 text-sm text-red-600">
+        <p className="mt-2 text-sm text-foreground">
           Embedding model failed to load. Search is unavailable.
         </p>
       )}

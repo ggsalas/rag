@@ -17,12 +17,12 @@ interface DocumentViewerHeaderProps {
 }
 
 const STATUS_COLORS: Record<DocumentMeta['status'], string> = {
-  pending: 'bg-yellow-100 text-yellow-800',
+  pending: 'bg-muted text-muted-foreground',
   parsing: 'bg-muted text-foreground',
   chunking: 'bg-muted text-foreground',
   embedding: 'bg-muted text-foreground',
   indexed: 'bg-muted text-foreground',
-  error: 'bg-red-100 text-red-800',
+  error: 'bg-foreground text-background',
 }
 
 export function DocumentViewerHeader({

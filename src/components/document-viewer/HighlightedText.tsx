@@ -34,7 +34,10 @@ export function HighlightedText({
   return (
     <div className="whitespace-pre-wrap text-foreground">
       {before}
-      <mark ref={highlightRef} className="bg-yellow-200 rounded px-0.5">
+      <mark
+        ref={highlightRef}
+        className="bg-foreground/20 text-foreground rounded px-0.5"
+      >
         {highlighted}
       </mark>
       {after}
