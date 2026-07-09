@@ -89,7 +89,7 @@ export function MainPanel({ children, noAddDocment }: MainPanelProps) {
   // Success: render header + children
   return (
     <>
-      <header className="h-16 border-b border-border bg-background px-6 py-4 flex items-center justify-between">
+      <header className="h-16 border-b border-border bg-background pl-16 pr-6 py-4 flex items-center justify-between">
         <div>
           {isEditing ? (
             <form onSubmit={handleRename} className="flex items-center gap-2">
