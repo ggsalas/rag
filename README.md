@@ -30,7 +30,7 @@ The extracted text then goes through two AST-based passes (both use `unified` / 
 
 ### 2. Chunking & Embedding
 
-The extracted text is split into overlapping chunks by paragraph — each chunk has a configurable size and overlap so context isn't lost at boundaries. Each chunk is then embedded into a vector using a HuggingFace model (`Xenova/multilingual-e5-small`, retrieval-tuned, 100+ languages) running locally via ONNX.
+The extracted text is split into overlapping chunks by paragraph — each chunk has a configurable size and overlap so context isn't lost at boundaries. Each chunk is then embedded into a vector using a HuggingFace model (`Xenova/bge-small-en-v1.5`, English, retrieval-tuned) running locally via ONNX.
 
 Both chunks and embeddings are persisted in IndexedDB (Dexie) — the source of truth. Orama maintains a derived in-memory vector index per library, rebuilt lazily on first access.
 

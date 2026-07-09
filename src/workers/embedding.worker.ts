@@ -3,17 +3,20 @@ import {
   pipeline,
   type FeatureExtractionPipeline,
 } from '@huggingface/transformers'
-import { EMBEDDING_MODEL_NAME, EMBEDDING_DIMENSIONS } from '@/lib/constants'
+import {
+  EMBEDDING_MODEL_NAME,
+  EMBEDDING_DIMENSIONS,
+  EMBEDDING_QUERY_PREFIX,
+  EMBEDDING_PASSAGE_PREFIX,
+} from '@/lib/constants'
 
 export type EmbeddingModelStatus = 'idle' | 'loading' | 'ready' | 'error'
 
 /**
  * Whether the text being embedded is a search query or a document passage.
- * The E5 family (multilingual-e5-*) requires these role prefixes at input
- * time: `query: ...` for search queries and `passage: ...` for indexed content.
- * Without the correct prefix, retrieval quality drops significantly because
- * the model was trained to project queries and passages into a shared space
- * using these markers.
+ * The prepended prefix depends on the model family — see EMBEDDING_QUERY_PREFIX
+ * / EMBEDDING_PASSAGE_PREFIX in constants.ts. Some models (E5) require
+ * `query: ` / `passage: `; others (BGE v1.5) accept plain text.
  */
 export type EmbeddingRole = 'query' | 'passage'
 
@@ -36,9 +39,11 @@ export interface EmbeddingWorkerAPI {
 let extractor: FeatureExtractionPipeline | null = null
 let status: EmbeddingModelStatus = 'idle'
 
-/** Prepends the E5 role prefix expected by multilingual-e5-* models. */
+/** Prepends the model-family-specific prefix for the given role. */
 function withRolePrefix(text: string, role: EmbeddingRole): string {
-  return `${role}: ${text}`
+  const prefix =
+    role === 'query' ? EMBEDDING_QUERY_PREFIX : EMBEDDING_PASSAGE_PREFIX
+  return prefix ? `${prefix}${text}` : text
 }
 
 /** Loads the embedding model into memory */

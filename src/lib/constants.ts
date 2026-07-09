@@ -25,8 +25,17 @@ export type HybridWeightPreset = keyof typeof HYBRID_WEIGHT_PRESETS
 export const DEFAULT_HYBRID_PRESET: HybridWeightPreset = 'semantic'
 export const DEFAULT_HYBRID_WEIGHTS = HYBRID_WEIGHT_PRESETS[DEFAULT_HYBRID_PRESET]
 
-export const EMBEDDING_MODEL_NAME = 'Xenova/multilingual-e5-small'
+export const EMBEDDING_MODEL_NAME = 'Xenova/bge-small-en-v1.5'
 export const EMBEDDING_DIMENSIONS = 384
+
+/**
+ * Role prefixes prepended to text before embedding. E5 models require
+ * `query: ` / `passage: `; BGE v1.5 models accept plain text without prefixes.
+ * Keep these constants together with EMBEDDING_MODEL_NAME so a model swap is
+ * a single-file change.
+ */
+export const EMBEDDING_QUERY_PREFIX = ''
+export const EMBEDDING_PASSAGE_PREFIX = ''
 
 /**
  * Absolute score floor for hybrid search results. Chunks below this hard cutoff

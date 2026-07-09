@@ -95,7 +95,7 @@ export function DocumentsPage() {
           </div>
 
           <p className="text-sm text-gray-400">
-            All chunks are embedded using <span className="font-mono">multilingual-e5-small</span> (384 dimensions, 100+ languages) and stored locally — nothing leaves your device.
+            All chunks are embedded using <span className="font-mono">bge-small-en-v1.5</span> (384 dimensions, English, retrieval-tuned) and stored locally — nothing leaves your device.
           </p>
 
           {count > 0 && (
