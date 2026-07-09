@@ -1,6 +1,14 @@
 import { useEffect, useState, useRef } from 'react'
-import { useParams, useSearchParams, useLocation, useNavigate } from 'react-router'
-import { getDocumentContent, getDocumentById } from '@/services/document.service'
+import {
+  useParams,
+  useSearchParams,
+  useLocation,
+  useNavigate,
+} from 'react-router'
+import {
+  getDocumentContent,
+  getDocumentById,
+} from '@/services/document.service'
 import { useChunkData } from '@/hooks/data/useChunkData'
 import { useDocumentActions } from '@/hooks/useDocumentActions'
 import { MainPanel } from '@/components/sidebar/MainPanel'
@@ -23,7 +31,10 @@ export function DocumentViewerPage() {
   const highlightRef = useRef<HTMLElement>(null)
 
   const { deleteDocument } = useDocumentActions()
-  const locationState = location.state as { searchQuery?: string; savedAi?: unknown } | null
+  const locationState = location.state as {
+    searchQuery?: string
+    savedAi?: unknown
+  } | null
   const searchQuery = locationState?.searchQuery
   const savedAi = locationState?.savedAi
 
@@ -82,7 +93,7 @@ export function DocumentViewerPage() {
     return (
       <MainPanel>
         <div className="flex items-center justify-center h-64">
-          <div className="text-gray-500">Loading document...</div>
+          <div className="text-muted-foreground">Loading document...</div>
         </div>
       </MainPanel>
     )
@@ -112,14 +123,18 @@ export function DocumentViewerPage() {
         <DocumentViewerHeader
           document={document}
           backToSearchUrl={backToSearchUrl}
-          backToSearchState={{ searchQuery, focusedChunkId: chunk?.id ?? null, savedAi }}
+          backToSearchState={{
+            searchQuery,
+            focusedChunkId: chunk?.id ?? null,
+            savedAi,
+          }}
           highlightChunkIndex={highlightChunkIndex}
           onNavigateChunk={navigateToChunk}
           onDelete={handleDelete}
         />
 
         <div className="max-w-5xl mx-auto px-6 py-6">
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+          <div className="font-mono">
             {content ? (
               <div className="prose max-w-none">
                 <HighlightedText
@@ -129,7 +144,7 @@ export function DocumentViewerPage() {
                 />
               </div>
             ) : (
-              <div className="text-center text-gray-500">
+              <div className="text-center text-muted-foreground">
                 {document.status === 'error'
                   ? 'Document processing failed'
                   : 'Document is being processed...'}

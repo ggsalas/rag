@@ -3,8 +3,8 @@ import { Sidebar } from '@/components/sidebar/Sidebar'
 
 export function SidebarLayout() {
   return (
-    <div className="flex h-screen overflow-hidden bg-gray-50">
-      <aside className="w-72 flex-shrink-0 border-r border-gray-200 bg-white flex flex-col overflow-hidden">
+    <div className="flex h-screen overflow-hidden bg-background">
+      <aside className="w-72 flex-shrink-0 border-r border-border bg-background flex flex-col overflow-hidden">
         <Sidebar />
       </aside>
 

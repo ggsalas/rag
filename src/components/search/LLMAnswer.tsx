@@ -23,7 +23,7 @@ function AnswerText({
 }) {
   const parts = text.split(/(\[\d+\])/)
   return (
-    <p className="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap">
+    <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap">
       {parts.map((part, i) => {
         const match = part.match(/^\[(\d+)\]$/)
         if (match?.[1]) {
@@ -35,7 +35,7 @@ function AnswerText({
                 key={i}
                 type="button"
                 onClick={() => onCitationClick(citation)}
-                className="inline-flex items-center justify-center w-5 h-5 text-xs font-semibold text-blue-700 bg-blue-100 rounded hover:bg-blue-200 transition-colors align-baseline mx-0.5"
+                className="inline-flex items-center justify-center w-5 h-5 text-xs font-semibold text-foreground bg-muted rounded hover:bg-accent transition-colors align-baseline mx-0.5"
                 title={citation.documentName}
               >
                 {idx}
@@ -61,20 +61,20 @@ export function LLMAnswer({
 }: LLMAnswerProps) {
   if (llmStatus === 'loading') {
     return (
-      <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
+      <div className="rounded-lg border border-border bg-muted p-4">
         <div className="flex items-center gap-2 mb-2">
-          <SparklesIcon className="h-4 w-4 text-blue-600 shrink-0" />
-          <span className="text-sm font-medium text-blue-700">
+          <SparklesIcon className="h-4 w-4 text-foreground shrink-0" />
+          <span className="text-sm font-medium text-foreground">
             Loading AI model…
           </span>
         </div>
-        <div className="h-1.5 bg-blue-200 rounded-full overflow-hidden">
+        <div className="h-1.5 bg-secondary rounded-full overflow-hidden">
           <div
-            className="h-full bg-blue-500 rounded-full transition-all duration-300"
+            className="h-full bg-primary rounded-full transition-all duration-300"
             style={{ width: `${llmProgress}%` }}
           />
         </div>
-        <p className="mt-1.5 text-xs text-blue-600">
+        <p className="mt-1.5 text-xs text-muted-foreground">
           {llmProgress}% — downloading Llama 3.2 1B (~880 MB, cached after first
           load)
         </p>
@@ -109,15 +109,15 @@ export function LLMAnswer({
   if (!isGenerating && !answer) return null
 
   return (
-    <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
+    <div className="rounded-lg border border-border bg-muted p-4">
       <div className="flex items-center gap-2 mb-3">
-        <SparklesIcon className="h-4 w-4 text-blue-600 shrink-0" />
-        <span className="text-sm font-medium text-blue-700">AI Answer</span>
+        <SparklesIcon className="h-4 w-4 text-foreground shrink-0" />
+        <span className="text-sm font-medium text-foreground">AI Answer</span>
         {isGenerating && (
           <span className="flex gap-0.5 ml-auto">
-            <span className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-bounce [animation-delay:-0.3s]" />
-            <span className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-bounce [animation-delay:-0.15s]" />
-            <span className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-bounce" />
+            <span className="w-1.5 h-1.5 bg-muted-foreground rounded-full animate-bounce [animation-delay:-0.3s]" />
+            <span className="w-1.5 h-1.5 bg-muted-foreground rounded-full animate-bounce [animation-delay:-0.15s]" />
+            <span className="w-1.5 h-1.5 bg-muted-foreground rounded-full animate-bounce" />
           </span>
         )}
       </div>

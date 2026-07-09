@@ -1,14 +1,57 @@
 @import 'tailwindcss';
 
-/* Custom theme overrides */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/*
+ * Black & white semantic theme (light values).
+ * Components use these tokens (bg-background, text-foreground, bg-primary, …)
+ * instead of hardcoded palette colors, so a dark palette can be enabled later
+ * just by overriding these vars under `.dark` (see skeleton at the bottom).
+ * Semantic status colors (red / yellow) intentionally keep the Tailwind palette
+ * for danger/error/warning feedback. Green is not used — success/high states use
+ * a neutral light background (bg-muted) instead.
+ */
 @theme {
-  --color-primary: #3b82f6;
-  --color-primary-dark: #2563eb;
-  --color-surface: #1e293b;
-  --color-surface-light: #334155;
-  --color-background: #0f172a;
+  --color-background: #ffffff;
+  --color-foreground: #111827;
+
+  --color-muted: #f3f4f6;
+  --color-muted-foreground: #6b7280;
+
+  --color-border: #e5e7eb;
+  --color-input: #d1d5db;
+  --color-ring: #000000;
+
+  --color-primary: #000000;
+  --color-primary-foreground: #ffffff;
+
+  --color-secondary: #e5e7eb;
+  --color-secondary-foreground: #111827;
+
+  --color-accent: #f3f4f6;
+  --color-accent-foreground: #111827;
 }
 
+/*
+ * Dark theme — enable later by adding the `dark` class on <html>:
+ *
+ * .dark {
+ *   --color-background: #0a0a0a;
+ *   --color-foreground: #fafafa;
+ *   --color-muted: #1f1f1f;
+ *   --color-muted-foreground: #a1a1aa;
+ *   --color-border: #262626;
+ *   --color-input: #333333;
+ *   --color-ring: #ffffff;
+ *   --color-primary: #ffffff;
+ *   --color-primary-foreground: #0a0a0a;
+ *   --color-secondary: #262626;
+ *   --color-secondary-foreground: #fafafa;
+ *   --color-accent: #262626;
+ *   --color-accent-foreground: #fafafa;
+ * }
+ */
+
 body {
-  @apply bg-background text-white min-h-screen;
+  @apply bg-background text-foreground min-h-screen;
 }

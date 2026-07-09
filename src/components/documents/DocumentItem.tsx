@@ -36,10 +36,10 @@ export function DocumentItem({
 
   return (
     <>
-      <tr className="hover:bg-gray-50">
+      <tr className="hover:bg-muted">
         <td className="px-6 py-4 whitespace-nowrap">
           <div className="flex items-center">
-            <div className="text-sm font-medium text-gray-900">
+            <div className="text-sm font-medium text-foreground">
               {document.name}
             </div>
           </div>
@@ -48,7 +48,7 @@ export function DocumentItem({
           )}
         </td>
         <td className="px-6 py-4 whitespace-nowrap">
-          <div className="text-sm text-gray-500">
+          <div className="text-sm text-muted-foreground">
             {formatFileSize(document.size)}
           </div>
         </td>
@@ -61,7 +61,7 @@ export function DocumentItem({
             {document.status}
           </span>
         </td>
-        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+        <td className="px-6 py-4 whitespace-nowrap text-sm text-muted-foreground">
           {formatDate(document.createdAt)}
         </td>
         <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
@@ -101,9 +101,9 @@ export function DocumentItem({
       {isProcessing && (
         <tr>
           <td colSpan={5} className="p-0 h-1">
-            <div className="w-full bg-gray-200 h-1">
+            <div className="w-full bg-secondary h-1">
               <div
-                className="bg-blue-600 h-1 transition-all duration-300"
+                className="bg-primary h-1 transition-all duration-300"
                 style={{ width: `${progress}%` }}
               />
             </div>
@@ -117,16 +117,16 @@ export function DocumentItem({
 function getStatusColor(status: DocumentMeta['status']) {
   switch (status) {
     case 'pending':
-      return 'bg-gray-100 text-gray-800'
+      return 'bg-muted text-foreground'
     case 'parsing':
     case 'chunking':
     case 'embedding':
       return 'bg-yellow-100 text-yellow-800'
     case 'indexed':
-      return 'bg-green-100 text-green-800'
+      return 'bg-muted text-foreground'
     case 'error':
       return 'bg-red-100 text-red-800'
     default:
-      return 'bg-gray-100 text-gray-800'
+      return 'bg-muted text-foreground'
   }
 }

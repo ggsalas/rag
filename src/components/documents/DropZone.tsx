@@ -59,7 +59,7 @@ export function DropZone({ onFiles, disabled = false, className }: DropZoneProps
       onDrop={handleDrop}
       className={`
         border-2 border-dashed rounded-lg p-8 text-center transition-colors flex flex-col items-center justify-center
-        ${isDragOver ? 'border-blue-500 bg-blue-50' : 'border-gray-300 hover:border-gray-400'}
+        ${isDragOver ? 'border-ring bg-muted' : 'border-input hover:border-input'}
         ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
         ${className ?? ''}
       `}
@@ -75,7 +75,7 @@ export function DropZone({ onFiles, disabled = false, className }: DropZoneProps
       />
 
       <svg
-        className="mx-auto h-12 w-12 text-gray-400 mb-4"
+        className="mx-auto h-12 w-12 text-muted-foreground mb-4"
         fill="none"
         stroke="currentColor"
         viewBox="0 0 24 24"
@@ -88,14 +88,14 @@ export function DropZone({ onFiles, disabled = false, className }: DropZoneProps
         />
       </svg>
 
-      <p className="text-gray-600 mb-2">
+      <p className="text-muted-foreground mb-2">
         {isDragOver ? 'Drop files here' : 'Drag & drop documents here'}
       </p>
-      <p className="text-sm text-gray-500 mb-4">
+      <p className="text-sm text-muted-foreground mb-4">
         or click to browse — PDF, DOCX, TXT, MD
       </p>
       <Button
-        variant="secondary"
+        variant="primary"
         size="sm"
         disabled={disabled}
         onClick={(e) => {

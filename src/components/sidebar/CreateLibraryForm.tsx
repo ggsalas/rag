@@ -1,5 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { useLibraryActions } from '@/hooks/useLibraryActions'
+import { Button } from '@/components/ui/Button'
+import { Input } from '@/components/ui/Input'
 
 interface CreateLibraryFormProps {
   onSuccess: (id: string) => void
@@ -32,33 +34,32 @@ export function CreateLibraryForm({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="p-3 border-b border-gray-200">
+    <form onSubmit={handleSubmit} className="p-3 border-b border-border">
       <div className="flex flex-col gap-2">
-        <input
+        <Input
           type="text"
+          size="sm"
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="Library name"
-          className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-black k text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="flex-1"
           disabled={isSubmitting}
           autoFocus
         />
 
         <div className="flex gap-2 justify-end">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-4 py-2 text-black  bg-transparent"
-          >
+          <Button type="button" variant="ghost" size="sm" onClick={onClose}>
             Cancel
-          </button>
-          <button
+          </Button>
+          <Button
             type="submit"
-            disabled={!name.trim() || isSubmitting}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-sm font-medium transition-colors"
+            variant="primary"
+            size="sm"
+            disabled={!name.trim()}
+            loading={isSubmitting}
           >
             Create
-          </button>
+          </Button>
         </div>
       </div>
     </form>

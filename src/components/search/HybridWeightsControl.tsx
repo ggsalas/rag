@@ -39,21 +39,21 @@ export function HybridWeightsControl({
       : 'Semantic-focused: prioritizes meaning over exact words (better for conceptual queries)'
 
   return (
-    <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+    <div className="bg-muted border border-border rounded-lg p-4">
       <div className="mb-3">
         <div className="flex items-center justify-between mb-2">
           <label
             htmlFor="hybrid-weight-slider"
-            className="text-sm font-medium text-gray-700"
+            className="text-sm font-medium text-foreground"
           >
             Search Mode Balance
           </label>
-          <span className="text-xs text-gray-500 italic">
+          <span className="text-xs text-muted-foreground italic">
             {modeDescription}
           </span>
         </div>
         <div className="flex items-center gap-3">
-          <span className="text-xs text-gray-600 whitespace-nowrap">
+          <span className="text-xs text-muted-foreground whitespace-nowrap">
             Keyword
           </span>
           <input
@@ -67,14 +67,14 @@ export function HybridWeightsControl({
             onMouseUp={handleSliderRelease}
             onTouchEnd={handleSliderRelease}
             disabled={disabled}
-            className="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex-1 h-2 bg-secondary rounded-lg appearance-none cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
           />
-          <span className="text-xs text-gray-600 whitespace-nowrap">
+          <span className="text-xs text-muted-foreground whitespace-nowrap">
             Semantic
           </span>
         </div>
       </div>
-      <div className="flex justify-between text-xs text-gray-500">
+      <div className="flex justify-between text-xs text-muted-foreground">
         <span>
           BM25: <strong>{Math.round((1 - localValue) * 100)}%</strong>
         </span>

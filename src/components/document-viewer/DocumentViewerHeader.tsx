@@ -1,11 +1,16 @@
 import { Link } from 'react-router'
 import type { DocumentMeta } from '@/types/document'
-import { DeleteButton } from '@/components/DeleteButton'
+import { DeleteButton } from '@/components/ui/DeleteButton'
+import { buttonClasses } from '@/components/ui/Button'
 
 interface DocumentViewerHeaderProps {
   document: DocumentMeta
   backToSearchUrl: string
-  backToSearchState: { searchQuery?: string; focusedChunkId: string | null; savedAi?: unknown }
+  backToSearchState: {
+    searchQuery?: string
+    focusedChunkId: string | null
+    savedAi?: unknown
+  }
   highlightChunkIndex: number | null
   onNavigateChunk: (index: number) => void
   onDelete: () => void
@@ -13,10 +18,10 @@ interface DocumentViewerHeaderProps {
 
 const STATUS_COLORS: Record<DocumentMeta['status'], string> = {
   pending: 'bg-yellow-100 text-yellow-800',
-  parsing: 'bg-blue-100 text-blue-800',
-  chunking: 'bg-blue-100 text-blue-800',
-  embedding: 'bg-blue-100 text-blue-800',
-  indexed: 'bg-green-100 text-green-800',
+  parsing: 'bg-muted text-foreground',
+  chunking: 'bg-muted text-foreground',
+  embedding: 'bg-muted text-foreground',
+  indexed: 'bg-muted text-foreground',
   error: 'bg-red-100 text-red-800',
 }
 
@@ -29,13 +34,13 @@ export function DocumentViewerHeader({
   onDelete,
 }: DocumentViewerHeaderProps) {
   return (
-    <div className="sticky top-0 z-10 bg-white shadow-sm transition-shadow">
+    <div className="sticky top-0 z-10 bg-background border-b border-border">
       <div className="max-w-5xl mx-auto px-6 py-4">
         <div className="flex items-center justify-between mb-3">
           <Link
             to={backToSearchUrl}
             state={backToSearchState}
-            className="inline-flex items-center text-sm text-blue-600 hover:text-blue-800"
+            className={buttonClasses({ variant: 'ghost', size: 'xs' })}
           >
             ← Back to search
           </Link>
@@ -46,13 +51,15 @@ export function DocumentViewerHeader({
             >
               {document.status}
             </span>
-            <DeleteButton onDelete={onDelete} />
+            <DeleteButton onDelete={onDelete} variant="ghost" />
           </div>
         </div>
 
-        <h1 className="text-2xl font-bold text-gray-900 mb-2">{document.name}</h1>
+        <h1 className="text-2xl font-bold text-foreground mb-2">
+          {document.name}
+        </h1>
 
-        <div className="flex items-center gap-4 text-sm text-gray-500">
+        <div className="flex items-center gap-4 text-sm text-muted-foreground">
           <span>Type: {document.type.toUpperCase()}</span>
           <span>•</span>
           <span>Size: {(document.size / 1024).toFixed(2)} KB</span>
@@ -61,8 +68,10 @@ export function DocumentViewerHeader({
           <div className="flex items-center gap-1 ml-1">
             <button
               onClick={() => onNavigateChunk(highlightChunkIndex! - 1)}
-              disabled={highlightChunkIndex === null || highlightChunkIndex <= 0}
-              className="w-6 h-6 flex items-center justify-center rounded text-gray-500 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              disabled={
+                highlightChunkIndex === null || highlightChunkIndex <= 0
+              }
+              className="w-6 h-6 flex items-center justify-center rounded text-muted-foreground hover:bg-accent disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
               title="Previous chunk"
             >
               ↑
@@ -77,7 +86,7 @@ export function DocumentViewerHeader({
                 highlightChunkIndex !== null &&
                 highlightChunkIndex >= document.chunkCount - 1
               }
-              className="w-6 h-6 flex items-center justify-center rounded text-gray-500 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              className="w-6 h-6 flex items-center justify-center rounded text-muted-foreground hover:bg-accent disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
               title="Next chunk"
             >
               ↓
