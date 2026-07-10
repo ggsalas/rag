@@ -6,6 +6,7 @@ import {
   type ChangeEvent,
 } from 'react'
 import { X, Sparkles } from 'lucide-react'
+import { Button } from '@/components/ui/Button'
 import type { ModelStatus } from '@/store/app.store'
 import type { HybridWeights } from '@/types/search'
 
@@ -150,19 +151,21 @@ export function SearchBar({
                   <div className="flex items-center gap-2 flex-wrap">
                     {onAiModeToggle && (
                       <>
-                        <button
+                        <Button
                           type="button"
+                          variant="ghost"
+                          size="xs"
                           onClick={onAiModeToggle}
                           disabled={isDisabled}
-                          className={`flex items-center gap-1 text-xs font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                          className={`gap-1 text-xs! ${
                             isAiMode
-                              ? 'text-foreground'
-                              : 'text-muted-foreground hover:text-foreground'
+                              ? ''
+                              : 'text-muted-foreground! hover:text-foreground!'
                           }`}
                         >
                           <Sparkles className="h-3.5 w-3.5" />
                           AI answer
-                        </button>
+                        </Button>
                         {isAiMode &&
                           llmMaxTokens !== undefined &&
                           onLlmMaxTokensChange && (

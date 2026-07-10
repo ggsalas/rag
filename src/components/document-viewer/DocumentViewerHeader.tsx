@@ -40,7 +40,11 @@ export function DocumentViewerHeader({
           <Link
             to={backToSearchUrl}
             state={backToSearchState}
-            className={buttonClasses({ variant: 'ghost', size: 'xs' })}
+            className={buttonClasses({
+              variant: 'ghost',
+              size: 'xs',
+              className: '-ml-3',
+            })}
           >
             ← Back to search
           </Link>
