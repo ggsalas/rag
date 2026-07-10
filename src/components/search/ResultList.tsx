@@ -58,9 +58,9 @@ export function ResultList({
   if (isSearching) {
     return (
       <div className="flex items-center justify-center py-12">
-        <div className="flex items-center gap-3 text-gray-500">
+        <div className="flex items-center gap-3 text-muted-foreground">
           <svg
-            className="animate-spin h-5 w-5 text-blue-600"
+            className="animate-spin h-5 w-5 text-foreground"
             xmlns="http://www.w3.org/2000/svg"
             fill="none"
             viewBox="0 0 24 24"
@@ -138,8 +138,8 @@ export function ResultList({
   // Results
   return (
     <div className="space-y-3">
-      <p className="text-sm text-gray-500">
-        {results.length} {results.length === 1 ? 'result' : 'results'} found
+      <p className="text-sm text-muted-foreground">
+        {results.length} {results.length === 1 ? 'chunk' : 'chunks'} found
       </p>
       {results.map((result) => (
         <ResultCard
@@ -149,7 +149,8 @@ export function ResultList({
           savedAi={savedAi}
           llmCitationIndex={
             citations
-              ? (citations.find((c) => c.chunkId === result.chunkId)?.index ?? null)
+              ? (citations.find((c) => c.chunkId === result.chunkId)?.index ??
+                null)
               : undefined
           }
         />

@@ -19,7 +19,6 @@ export interface LLMCitation {
   chunkId: string
   documentId: string
   documentName: string
-  page?: number
   chunkIndex: number
 }
 
@@ -45,6 +44,18 @@ const state: LlmModuleState = ((
 export async function initLLMModel(
   onProgress?: LLMProgressCallback,
 ): Promise<void> {
+  if (!navigator.gpu) {
+    throw new Error(
+      'Your browser does not support WebGPU. Try an up-to-date Chrome, Edge or Arc.',
+    )
+  }
+  const adapter = await navigator.gpu.requestAdapter().catch(() => null)
+  if (!adapter) {
+    throw new Error(
+      'No compatible GPU found. Make sure hardware acceleration is enabled in your browser.',
+    )
+  }
+
   const appConfig = {
     ...prebuiltAppConfig,
     model_list: prebuiltAppConfig.model_list.map((m) =>
@@ -84,7 +95,6 @@ export async function generateAnswer(
     chunkId: r.chunkId,
     documentId: r.documentId,
     documentName: r.documentName,
-    page: r.page,
     chunkIndex: r.chunkIndex,
   }))
 

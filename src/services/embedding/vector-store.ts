@@ -9,7 +9,6 @@ export interface VectorSearchResult {
   documentName: string
   text: string
   score: number
-  page?: number
   chunkIndex: number
 }
 
@@ -24,7 +23,6 @@ async function createIndex(libraryId: string): Promise<AnyOrama> {
       documentName: 'string',
       text: 'string',
       embedding: `vector[${EMBEDDING_DIMENSIONS}]`,
-      page: 'number',
       chunkIndex: 'number',
     } as const,
   })
@@ -52,7 +50,6 @@ export async function insertChunks(
       documentName: chunk.documentName,
       text: chunk.text,
       embedding: chunk.embedding,
-      page: chunk.page ?? 0,
       chunkIndex: chunk.chunkIndex,
     })
   }
@@ -80,18 +77,14 @@ export async function searchHybrid(
     hybridWeights: weights ?? { text: 0.5, vector: 0.5 },
   })
 
-  return results.hits.map((hit) => {
-    const page = hit.document.page as number
-    return {
-      chunkId: hit.document.chunkId as string,
-      documentId: hit.document.documentId as string,
-      documentName: hit.document.documentName as string,
-      text: hit.document.text as string,
-      score: hit.score,
-      page: page === 0 ? undefined : page,
-      chunkIndex: hit.document.chunkIndex as number,
-    }
-  })
+  return results.hits.map((hit) => ({
+    chunkId: hit.document.chunkId as string,
+    documentId: hit.document.documentId as string,
+    documentName: hit.document.documentName as string,
+    text: hit.document.text as string,
+    score: hit.score,
+    chunkIndex: hit.document.chunkIndex as number,
+  }))
 }
 
 /** Performs vector similarity search within a library's index */
@@ -111,18 +104,14 @@ export async function searchByVector(
     similarity: 0.0,
   })
 
-  return results.hits.map((hit) => {
-    const page = hit.document.page as number
-    return {
-      chunkId: hit.document.chunkId as string,
-      documentId: hit.document.documentId as string,
-      documentName: hit.document.documentName as string,
-      text: hit.document.text as string,
-      score: hit.score,
-      page: page === 0 ? undefined : page,
-      chunkIndex: hit.document.chunkIndex as number,
-    }
-  })
+  return results.hits.map((hit) => ({
+    chunkId: hit.document.chunkId as string,
+    documentId: hit.document.documentId as string,
+    documentName: hit.document.documentName as string,
+    text: hit.document.text as string,
+    score: hit.score,
+    chunkIndex: hit.document.chunkIndex as number,
+  }))
 }
 
 /** Removes all chunks belonging to a specific document from the vector index */

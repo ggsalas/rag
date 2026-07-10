@@ -1,4 +1,5 @@
 import { useState, useCallback, useRef, type DragEvent } from 'react'
+import { CloudUpload } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 
 const ACCEPTED_TYPES = [
@@ -59,7 +60,7 @@ export function DropZone({ onFiles, disabled = false, className }: DropZoneProps
       onDrop={handleDrop}
       className={`
         border-2 border-dashed rounded-lg p-8 text-center transition-colors flex flex-col items-center justify-center
-        ${isDragOver ? 'border-blue-500 bg-blue-50' : 'border-gray-300 hover:border-gray-400'}
+        ${isDragOver ? 'border-ring bg-muted' : 'border-input hover:border-input'}
         ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
         ${className ?? ''}
       `}
@@ -74,28 +75,19 @@ export function DropZone({ onFiles, disabled = false, className }: DropZoneProps
         onChange={(e) => handleFiles(e.target.files)}
       />
 
-      <svg
-        className="mx-auto h-12 w-12 text-gray-400 mb-4"
-        fill="none"
-        stroke="currentColor"
-        viewBox="0 0 24 24"
-      >
-        <path
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          strokeWidth={2}
-          d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
-        />
-      </svg>
+      <CloudUpload
+        className="mx-auto h-12 w-12 text-muted-foreground mb-4"
+        strokeWidth={1.5}
+      />
 
-      <p className="text-gray-600 mb-2">
+      <p className="text-muted-foreground mb-2">
         {isDragOver ? 'Drop files here' : 'Drag & drop documents here'}
       </p>
-      <p className="text-sm text-gray-500 mb-4">
+      <p className="text-sm text-muted-foreground mb-4">
         or click to browse — PDF, DOCX, TXT, MD
       </p>
       <Button
-        variant="secondary"
+        variant="primary"
         size="sm"
         disabled={disabled}
         onClick={(e) => {

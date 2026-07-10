@@ -30,7 +30,6 @@ export async function search(
     documentName: r.documentName,
     text: r.text,
     score: r.score,
-    page: r.page,
     chunkIndex: r.chunkIndex,
   }))
 

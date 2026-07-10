@@ -1,10 +1,22 @@
 import { useState, useEffect } from 'react'
+import { X, Check } from 'lucide-react'
+import {
+  Button,
+  type ButtonSize,
+  type ButtonVariant,
+} from '@/components/ui/Button'
 
 interface DeleteButtonProps {
   onDelete: () => void
+  size?: ButtonSize
+  variant: ButtonVariant
 }
 
-export function DeleteButton({ onDelete }: DeleteButtonProps) {
+export function DeleteButton({
+  onDelete,
+  size = 'xs',
+  variant = 'soft',
+}: DeleteButtonProps) {
   const [confirmDelete, setConfirmDelete] = useState(false)
 
   useEffect(() => {
@@ -23,16 +35,19 @@ export function DeleteButton({ onDelete }: DeleteButtonProps) {
   }
 
   return (
-    <button
+    <Button
+      variant={confirmDelete ? 'danger' : variant}
+      size={size}
       onClick={handleClick}
-      className={`w-auto h-6 px-2 rounded flex items-center justify-center text-sm transition-colors ${
-        confirmDelete
-          ? 'bg-red-100 text-red-700 hover:bg-red-200'
-          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-      }`}
       title={confirmDelete ? 'Click again to confirm' : 'Delete document'}
     >
-      {confirmDelete ? '✓ Confirm delete' : '×'}
-    </button>
+      {confirmDelete ? (
+        <span className="flex items-center gap-1">
+          <Check className="h-4 w-4" /> Confirm delete
+        </span>
+      ) : (
+        <X className="h-4 w-4" />
+      )}
+    </Button>
   )
 }

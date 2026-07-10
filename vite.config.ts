@@ -14,9 +14,13 @@ export default defineConfig({
       registerType: 'autoUpdate',
       manifest: false, // We use our own manifest.json in public/
       workbox: {
-        globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,wasm}'],
+        // ONNX Runtime WASM (~24 MB, used by @huggingface/transformers) is fetched
+        // on demand and cached by the browser HTTP cache; too large to precache.
+        globIgnores: ['**/ort-wasm-*.wasm'],
         navigateFallback: 'index.html',
-        // LLM worker bundle exceeds 2 MiB default; WebLLM model weights are cached separately by the engine
+        // LLM worker bundle exceeds 2 MiB default; WebLLM model weights are cached separately by the engine.
+        // LiteParse WASM is ~4.8 MiB and must fit here for offline PDF parsing.
         maximumFileSizeToCacheInBytes: 10 * 1024 * 1024,
       },
     }),

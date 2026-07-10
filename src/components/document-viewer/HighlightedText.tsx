@@ -18,13 +18,13 @@ export function HighlightedText({
   }, [highlight, highlightRef])
 
   if (!highlight) {
-    return <div className="whitespace-pre-wrap text-gray-800">{text}</div>
+    return <div className="whitespace-pre-wrap text-foreground">{text}</div>
   }
 
   const match = findChunkInText(text, highlight)
 
   if (!match) {
-    return <div className="whitespace-pre-wrap text-gray-800">{text}</div>
+    return <div className="whitespace-pre-wrap text-foreground">{text}</div>
   }
 
   const before = text.slice(0, match.start)
@@ -32,9 +32,12 @@ export function HighlightedText({
   const after = text.slice(match.end)
 
   return (
-    <div className="whitespace-pre-wrap text-gray-800">
+    <div className="whitespace-pre-wrap text-foreground">
       {before}
-      <mark ref={highlightRef} className="bg-yellow-200 rounded px-0.5">
+      <mark
+        ref={highlightRef}
+        className="bg-foreground/20 text-foreground rounded px-0.5"
+      >
         {highlighted}
       </mark>
       {after}

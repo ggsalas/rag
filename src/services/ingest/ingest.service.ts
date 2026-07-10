@@ -1,6 +1,7 @@
 import { generateId } from '@/lib/utils'
 import { parseFile } from './parser.service'
-import { chunkText, chunkTextWithPages, chunkMarkdown } from './chunking.service'
+import { chunkText, chunkMarkdown } from './chunking.service'
+import { sanitize } from './sanitize.service'
 import { embedBatch } from '@/services/embedding/embedding.service'
 import { insertChunks } from '@/services/embedding/vector-store'
 import { db } from '@/infrastructure/db'
@@ -61,22 +62,27 @@ async function processDocument(
       )
     })
 
+    // Sanitize before chunking to strip nav chrome, escape sequences, orphan URLs, etc.
+    const cleanText = sanitize(parseResult.text)
+
     await saveDocumentContent({
       documentId: docMeta.id,
       libraryId,
-      text: parseResult.text,
-      pages: parseResult.pages,
+      text: cleanText,
     })
 
     await updateDocumentStatus(docMeta.id, 'chunking')
     await updateProgress(docMeta.id, PROGRESS.CHUNKING[0])
 
-    const isMarkdown = docMeta.name.endsWith('.md') || docMeta.name.endsWith('.markdown')
-    const chunkDataList = parseResult.pages
-      ? chunkTextWithPages(parseResult.pages)
-      : isMarkdown
-        ? chunkMarkdown(parseResult.text)
-        : chunkText(parseResult.text)
+    // PDFs return structured markdown from LiteParse, so they take the same
+    // markdown path as native .md files. Plain-text formats use paragraph chunking.
+    const isStructuredMarkdown =
+      docMeta.type === 'pdf' ||
+      docMeta.name.endsWith('.md') ||
+      docMeta.name.endsWith('.markdown')
+    const chunkDataList = isStructuredMarkdown
+      ? chunkMarkdown(cleanText)
+      : chunkText(cleanText)
 
     if (chunkDataList.length === 0) {
       throw new Error('No text could be extracted from document')
@@ -101,7 +107,6 @@ async function processDocument(
       chunkIndex: data.chunkIndex,
       text: data.text,
       embedding: embeddings[i]!,
-      page: data.page,
     }))
 
     await updateProgress(docMeta.id, PROGRESS.INDEXING[0])

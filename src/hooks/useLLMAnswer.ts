@@ -20,6 +20,7 @@ export function useLLMAnswer(init: LLMAnswerInit = {}) {
   const [answeredQuery, setAnsweredQuery] = useState(init.answeredQuery ?? '')
   const [isGenerating, setIsGenerating] = useState(false)
   const [llmError, setLlmError] = useState<string | null>(null)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const genIdRef = useRef(0)
 
   const llmStatus = useAppStore((s) => s.llmStatus)
@@ -29,6 +30,7 @@ export function useLLMAnswer(init: LLMAnswerInit = {}) {
 
   const loadModel = useCallback(async () => {
     if (llmStatus === 'ready' || llmStatus === 'loading') return
+    setLoadError(null)
     setLlmStatus('loading')
     setLlmProgress(0)
     try {
@@ -38,6 +40,7 @@ export function useLLMAnswer(init: LLMAnswerInit = {}) {
       setLlmStatus('ready')
     } catch (err) {
       console.error('Failed to load LLM:', err)
+      setLoadError(err instanceof Error ? err.message : 'Failed to load AI model')
       setLlmStatus('error')
     }
   }, [llmStatus, setLlmStatus, setLlmProgress])
@@ -111,6 +114,7 @@ export function useLLMAnswer(init: LLMAnswerInit = {}) {
     llmStatus,
     llmProgress,
     llmError,
+    loadError,
     generate,
     clear,
     loadModel,

@@ -1,3 +1,4 @@
+import { ChevronDown } from 'lucide-react'
 import type { Library } from '@/types/library'
 import { useDocumentsData } from '@/hooks/data/useDocumentsData'
 import { SidebarDocumentItem } from './SidebarDocumentItem'
@@ -21,19 +22,25 @@ export function LibraryAccordionItem({
 
   return (
     <div
-      className="border-b border-gray-200  cursor-pointer"
+      className="border-b border-border  cursor-pointer"
       onClick={onToggle}
     >
-      <div
-        className={`flex items-center gap-2 px-3 py-2 hover:bg-gray-100 ${isExpanded ? 'bg-gray-50' : ''}`}
-      >
+      <div className="flex items-center gap-2 px-3 py-2 group">
         <div className="flex-1 flex items-center justify-between gap-2">
-          <span className="font-medium text-gray-900 truncate flex-1 text-left">
+          <span
+            className={`truncate flex-1 text-left ${
+              isExpanded
+                ? 'font-semibold text-foreground'
+                : 'font-medium text-muted-foreground group-hover:text-foreground'
+            }`}
+          >
             {library.name}
           </span>
-          <span className="text-gray-400 text-sm">
-            {isExpanded ? '▼' : '▲'}
-          </span>
+          <ChevronDown
+            className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200 ${
+              isExpanded ? '' : '-rotate-90'
+            }`}
+          />
         </div>
       </div>
 
@@ -41,12 +48,12 @@ export function LibraryAccordionItem({
         className={`grid transition-[grid-template-rows] duration-200 ease-out ${isExpanded ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}`}
       >
         <div className="overflow-hidden">
-          <div className="bg-gray-50">
+          <div>
             {loading && (
-              <div className="px-3 py-2 text-sm text-gray-500">Loading...</div>
+              <div className="px-3 py-2 text-sm text-muted-foreground">Loading...</div>
             )}
             {!loading && documents.length === 0 && (
-              <div className="px-3 py-2 text-sm text-gray-500">
+              <div className="px-3 py-2 text-sm text-muted-foreground">
                 No documents yet
               </div>
             )}

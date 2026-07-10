@@ -20,7 +20,18 @@ export function App() {
 
   return (
     <>
-      <Toaster expand />
+      <Toaster
+        expand
+        theme="system"
+        toastOptions={{
+          style: {
+            boxShadow: 'none',
+            background: 'var(--color-background)',
+            border: '1px solid var(--color-border)',
+            color: 'var(--color-foreground)',
+          },
+        }}
+      />
       <RouterProvider router={router} />
     </>
   )

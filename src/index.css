@@ -1,14 +1,60 @@
 @import 'tailwindcss';
 
-/* Custom theme overrides */
+/*
+ * Monochrome (black & white) semantic theme.
+ * Components use these tokens (bg-background, text-foreground, bg-primary, …)
+ * instead of hardcoded palette colors, so the whole UI is grayscale and the
+ * dark theme is just an override of these vars under `prefers-color-scheme`.
+ * There are no red/yellow/green semantic colors — status/danger are conveyed
+ * with neutral shades (foreground / muted) and text.
+ */
 @theme {
-  --color-primary: #3b82f6;
-  --color-primary-dark: #2563eb;
-  --color-surface: #1e293b;
-  --color-surface-light: #334155;
-  --color-background: #0f172a;
+  --color-background: #ffffff;
+  --color-foreground: #111827;
+
+  --color-muted: #f3f4f6;
+  --color-muted-foreground: #6b7280;
+
+  --color-border: #e5e7eb;
+  --color-input: #d1d5db;
+  --color-ring: #111827;
+
+  --color-primary: #111827;
+  --color-primary-foreground: #ffffff;
+  --color-primary-hover: #1f2937;
+
+  --color-secondary: #e5e7eb;
+  --color-secondary-foreground: #111827;
+
+  --color-accent: #f3f4f6;
+  --color-accent-foreground: #111827;
+}
+
+/* Dark theme — activates automatically with the OS/browser preference. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-background: #0a0a0a;
+    --color-foreground: #fafafa;
+
+    --color-muted: #1f1f1f;
+    --color-muted-foreground: #a1a1aa;
+
+    --color-border: #262626;
+    --color-input: #333333;
+    --color-ring: #fafafa;
+
+    --color-primary: #fafafa;
+    --color-primary-foreground: #0a0a0a;
+    --color-primary-hover: #e5e5e5;
+
+    --color-secondary: #262626;
+    --color-secondary-foreground: #fafafa;
+
+    --color-accent: #262626;
+    --color-accent-foreground: #fafafa;
+  }
 }
 
 body {
-  @apply bg-background text-white min-h-screen;
+  @apply bg-background text-foreground min-h-screen;
 }

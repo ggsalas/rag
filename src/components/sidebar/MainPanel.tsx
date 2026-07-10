@@ -1,9 +1,12 @@
-import { useState, type ReactNode } from 'react'
+import { useState, type FormEvent, type ReactNode } from 'react'
+import { Pencil, Plus } from 'lucide-react'
 import { useParams, Link, useNavigate } from 'react-router'
 import { toast } from 'sonner'
 import { useLibraryData } from '@/hooks/data/useLibraryData'
 import { useLibraryActions } from '@/hooks/useLibraryActions'
-import { Button } from '@/components/ui/Button'
+import { Button, buttonClasses } from '@/components/ui/Button'
+import { Input } from '@/components/ui/Input'
+import { DeleteButton } from '@/components/ui/DeleteButton'
 
 interface MainPanelProps {
   children: ReactNode
@@ -17,9 +20,37 @@ interface MainPanelProps {
 export function MainPanel({ children, noAddDocment }: MainPanelProps) {
   const { libraryId } = useParams<{ libraryId: string }>()
   const library = useLibraryData(libraryId)
-  const { deleteLibrary } = useLibraryActions()
+  const { deleteLibrary, renameLibrary } = useLibraryActions()
   const navigate = useNavigate()
-  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [isEditing, setIsEditing] = useState(false)
+  const [nameDraft, setNameDraft] = useState('')
+  const [isRenaming, setIsRenaming] = useState(false)
+
+  const startEditing = () => {
+    setNameDraft(library?.name ?? '')
+    setIsEditing(true)
+  }
+
+  const handleRename = async (e: FormEvent) => {
+    e.preventDefault()
+    if (!libraryId) return
+    const trimmedName = nameDraft.trim()
+    if (!trimmedName || trimmedName === library?.name) {
+      setIsEditing(false)
+      return
+    }
+
+    setIsRenaming(true)
+    try {
+      await renameLibrary(libraryId, trimmedName)
+      setIsEditing(false)
+    } catch (error) {
+      console.error('Failed to rename library:', error)
+      toast.error('Failed to rename library')
+    } finally {
+      setIsRenaming(false)
+    }
+  }
 
   const handleDeleteLibrary = async () => {
     if (!libraryId) return
@@ -43,10 +74,10 @@ export function MainPanel({ children, noAddDocment }: MainPanelProps) {
     return (
       <div className="flex-1 flex items-center justify-center">
         <div className="text-center">
-          <p className="text-red-600 font-medium">Library not found</p>
+          <p className="text-foreground font-medium">Library not found</p>
           <Link
             to="/libraries"
-            className="text-blue-600 hover:underline text-sm mt-2 inline-block"
+            className="text-foreground hover:underline text-sm mt-2 inline-block"
           >
             ← Back to libraries
           </Link>
@@ -58,46 +89,77 @@ export function MainPanel({ children, noAddDocment }: MainPanelProps) {
   // Success: render header + children
   return (
     <>
-      <header className="h-16 border-b border-gray-200 bg-white px-6 py-4 flex items-center justify-between">
+      <header className="h-16 border-b border-border bg-background pl-16 pr-6 py-4 flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-gray-900">
-            {library.name}
-          </h1>
-        </div>
-
-        <div className="flex items-center items-center gap-6">
-          {!noAddDocment && (
-            <Link
-              to={`/libraries/${libraryId}/documents`}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
-            >
-              + Add Documents
-            </Link>
-          )}
-
-          {confirmDelete ? (
-            <>
-              <Button
-                variant="secondary"
+          {isEditing ? (
+            <form onSubmit={handleRename} className="flex items-center gap-2">
+              <Input
+                type="text"
                 size="sm"
-                onClick={() => setConfirmDelete(false)}
+                value={nameDraft}
+                onChange={(e) => setNameDraft(e.target.value)}
+                onKeyDown={(e) => e.key === 'Escape' && setIsEditing(false)}
+                disabled={isRenaming}
+                autoFocus
+                className="font-semibold"
+              />
+              <Button
+                type="submit"
+                variant="primary"
+                size="sm"
+                disabled={!nameDraft.trim()}
+                loading={isRenaming}
+              >
+                Rename
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                loading={isRenaming}
+                onClick={() => setIsEditing(false)}
               >
                 Cancel
               </Button>
-              <Button variant="danger" size="sm" onClick={handleDeleteLibrary}>
-                Delete library
-              </Button>
-            </>
+            </form>
           ) : (
-            <Button
-              variant="secondary"
-              size="sm"
-              className="hover:bg-gray-950 hover:text-white cursor-pointer"
-              onClick={() => setConfirmDelete(true)}
-            >
-              X
-            </Button>
+            <div className="flex items-center gap-2">
+              <h1 className="text-xl font-semibold text-foreground">
+                {library.name}
+              </h1>
+              <Button
+                variant="ghost"
+                size="xs"
+                onClick={startEditing}
+                title="Rename library"
+                aria-label="Rename library"
+              >
+                <Pencil className="w-4 h-4" />
+              </Button>
+            </div>
           )}
+        </div>
+
+        <div className="flex items-center gap-4">
+          {!noAddDocment && (
+            <Link
+              to={`/libraries/${libraryId}/documents`}
+              className={buttonClasses({
+                variant: 'secondary',
+                size: 'sm',
+                className: 'gap-1.5',
+              })}
+            >
+              <Plus className="h-4 w-4" />
+              Add Documents
+            </Link>
+          )}
+
+          <DeleteButton
+            onDelete={handleDeleteLibrary}
+            size="sm"
+            variant="ghost"
+          />
         </div>
       </header>
       {children}

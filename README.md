@@ -15,13 +15,13 @@ Documents are organized into **Libraries** — independent collections, each wit
 
 When a document is uploaded, its text is extracted according to file type:
 
-| Format   | Parser                       |
-| -------- | ---------------------------- |
-| PDF      | pdfjs-dist                   |
-| DOCX     | mammoth                      |
-| TXT / MD | Native browser `File.text()` |
+| Format   | Parser                                  |
+| -------- | --------------------------------------- |
+| PDF      | @llamaindex/liteparse-wasm (PDFium)     |
+| DOCX     | mammoth                                 |
+| TXT / MD | Native browser `File.text()`            |
 
-Parsing runs in a Web Worker to avoid blocking the UI.
+Parsing runs in a Web Worker to avoid blocking the UI. PDFs are extracted as structured Markdown (headings, lists, tables) so they can flow through the same chunker as native `.md` files. Extracted text is then run through a conservative `sanitize` pass (AST-based via `remark`) that normalizes Unicode (NFKC), strips zero-width characters, and cleans whitespace — without altering document structure. An opt-in `boilerplate-stripper` module handles aggressive noise removal (nav chrome, empty tables, citation markers) for scraped content when enabled per library.
 
 ### 2. Chunking & Embedding
 

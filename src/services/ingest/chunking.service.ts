@@ -3,7 +3,6 @@ import { CHUNK_SIZE, CHUNK_OVERLAP } from '@/lib/constants'
 export interface ChunkData {
   text: string
   chunkIndex: number
-  page?: number
 }
 
 export interface ChunkOptions {
@@ -67,53 +66,6 @@ export function chunkText(text: string, options?: ChunkOptions): ChunkData[] {
   return chunks
 }
 
-/** Chunks text with page information preserved (for PDF documents) */
-export function chunkTextWithPages(
-  pages: string[],
-  options?: ChunkOptions,
-): ChunkData[] {
-  const size = options?.size ?? CHUNK_SIZE
-  const overlap = options?.overlap ?? CHUNK_OVERLAP
-  const chunks: ChunkData[] = []
-  let chunkIndex = 0
-  let currentChunk = ''
-  let currentPage = 1
-
-  for (let pageIdx = 0; pageIdx < pages.length; pageIdx++) {
-    const pageText = pages[pageIdx]!.trim()
-    if (!pageText) continue
-
-    const sentences = splitSentences(pageText)
-    for (const sentence of sentences) {
-      if (
-        currentChunk.length + sentence.length + 1 > size &&
-        currentChunk.length > 0
-      ) {
-        chunks.push({
-          text: currentChunk.trim(),
-          chunkIndex,
-          page: currentPage,
-        })
-        chunkIndex++
-        if (overlap > 0 && currentChunk.length > overlap) {
-          currentChunk = currentChunk.slice(-overlap) + ' ' + sentence
-        } else {
-          currentChunk = sentence
-        }
-      } else {
-        currentChunk = currentChunk ? currentChunk + ' ' + sentence : sentence
-      }
-      currentPage = pageIdx + 1
-    }
-  }
-
-  if (currentChunk.trim()) {
-    chunks.push({ text: currentChunk.trim(), chunkIndex, page: currentPage })
-  }
-
-  return chunks
-}
-
 /**
  * Chunks markdown by heading sections. Each heading + its content becomes a chunk.
  * Sections that exceed the size limit are split further by paragraph.
@@ -163,9 +115,4 @@ function findBreakPoint(text: string, maxLength: number): number {
   const lastSpace = sub.lastIndexOf(' ')
   if (lastSpace > maxLength * 0.3) return lastSpace + 1
   return maxLength
-}
-
-/** Splits text into sentences for fine-grained chunking */
-function splitSentences(text: string): string[] {
-  return text.match(/[^.!?]+[.!?]+\s*|[^.!?]+$/g) || [text]
 }

@@ -1,9 +1,71 @@
 import type { ButtonHTMLAttributes } from 'react'
 
+export type ButtonVariant =
+  | 'primary'
+  | 'secondary'
+  | 'danger'
+  | 'soft'
+  | 'softDanger'
+  | 'ghost'
+export type ButtonSize = 'xs' | 'sm' | 'md'
+
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
-  variant?: 'primary' | 'secondary' | 'danger'
-  size?: 'sm' | 'md' | 'lg'
+  variant?: ButtonVariant
+  size?: ButtonSize
   loading?: boolean
+}
+
+// `border` (width only) is set here; each variant sets its own border color so
+// the outline is always visible. Setting a color here too would win the CSS
+// cascade and hide the variant border.
+const baseStyles =
+  'inline-flex items-center justify-center font-medium rounded-lg border transition-colors focus:outline-none focus:ring-2 focus:ring-offset-0 disabled:cursor-not-allowed cursor-pointer'
+
+// Outline aesthetic: transparent background + colored border/text at rest, a
+// subtle accent fill only on hover. `primary` is the exception — a solid black
+// fill reserved for the main call-to-action buttons. Filled backgrounds are
+// otherwise reserved for progress bars and sliders.
+const variantStyles: Record<ButtonVariant, string> = {
+  // Filled CTA. When disabled it drops the fill and becomes an outline with
+  // gray text — matching the outline family instead of a dimmed black block.
+  primary:
+    'bg-primary text-primary-foreground border-primary hover:bg-primary-hover focus:ring-ring disabled:bg-transparent disabled:text-muted-foreground disabled:border-border',
+  secondary:
+    'bg-transparent border-border text-foreground hover:bg-accent focus:ring-ring disabled:opacity-50',
+  // Monochrome danger: a stronger (foreground) outline instead of red.
+  danger:
+    'bg-transparent border-foreground text-foreground hover:bg-accent focus:ring-ring disabled:opacity-50',
+  soft: 'bg-transparent border-border text-foreground hover:bg-accent focus:ring-ring disabled:opacity-50',
+  softDanger:
+    'bg-transparent border-foreground text-foreground hover:bg-accent focus:ring-ring disabled:opacity-50',
+  ghost:
+    'bg-transparent border-transparent text-foreground hover:bg-accent focus:ring-ring disabled:opacity-50',
+}
+
+/**
+ * Padding/height/text tokens shared by Button and Input, so a control and a
+ * button of the same `size` line up at the same height.
+ */
+export const controlSizeStyles: Record<ButtonSize, string> = {
+  xs: 'h-6 px-2 text-sm',
+  sm: 'px-3 py-1.5 text-sm',
+  md: 'px-4 py-2 text-base',
+}
+
+/**
+ * Builds the Button's Tailwind classes independent of the rendered element,
+ * so the same look can be applied to a `<Link>`/`<a>` (or anything else).
+ */
+export function buttonClasses({
+  variant = 'primary',
+  size = 'md',
+  className = '',
+}: {
+  variant?: ButtonVariant
+  size?: ButtonSize
+  className?: string
+} = {}) {
+  return `${baseStyles} ${variantStyles[variant]} ${controlSizeStyles[size]} ${className}`.trim()
 }
 
 export function Button({
@@ -15,25 +77,9 @@ export function Button({
   children,
   ...props
 }: ButtonProps) {
-  const baseStyles =
-    'inline-flex items-center justify-center font-medium rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer'
-
-  const variantStyles = {
-    primary: 'bg-blue-600 text-white hover:bg-blue-700 focus:ring-blue-500',
-    secondary:
-      'bg-gray-200 text-gray-900 hover:bg-gray-300 focus:ring-gray-500',
-    danger: 'bg-red-600 text-white hover:bg-red-700 focus:ring-red-500',
-  }
-
-  const sizeStyles = {
-    sm: 'px-3 py-1.5 text-sm',
-    md: 'px-4 py-2 text-base',
-    lg: 'px-6 py-3 text-lg',
-  }
-
   return (
     <button
-      className={`${baseStyles} ${variantStyles[variant]} ${sizeStyles[size]} ${className}`}
+      className={buttonClasses({ variant, size, className })}
       disabled={disabled || loading}
       {...props}
     >
