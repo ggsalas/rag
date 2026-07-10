@@ -1,46 +1,46 @@
-import { useState, useCallback, useRef, useEffect } from 'react'
+import { useState, useCallback, useRef } from 'react'
 import { search as searchService } from '@/services/search/search.service'
 import * as libraryService from '@/services/library.service'
-import { DEFAULT_MAX_RESULTS, DEFAULT_MIN_SCORE, DEFAULT_HYBRID_WEIGHTS, LLM_MAX_TOKENS } from '@/lib/constants'
+import {
+  DEFAULT_MAX_RESULTS,
+  DEFAULT_MIN_SCORE,
+  DEFAULT_HYBRID_WEIGHTS,
+  LLM_MAX_TOKENS,
+} from '@/lib/constants'
 import type { SearchResult, HybridWeights } from '@/types/search'
+import type { SearchPreferences } from '@/types/library'
 
-/** Hook for performing hybrid search within a library */
-export function useSearch(libraryId: string, initialQuery = '') {
-  const [query, setQuery] = useState(initialQuery)
+/**
+ * Executor hook for hybrid search within a library. It owns the search data and
+ * persisted preferences but does NOT decide *when* to search — the caller (the
+ * orchestrator in useSearchSession) drives that via `search()`. This keeps the
+ * hook free of implicit sequencing (no auto-trigger effects).
+ *
+ * `initialPrefs` are supplied by the route loader, so preference state is seeded
+ * synchronously on the first render — no post-mount fetch and no flash of
+ * defaults followed by a re-search once saved prefs arrive.
+ */
+export function useSearch(libraryId: string, initialPrefs?: SearchPreferences | null) {
+  const [query, setQuery] = useState('')
   const [results, setResults] = useState<SearchResult[]>([])
   const [isSearching, setIsSearching] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [hasSearched, setHasSearched] = useState(false)
-  const [hybridWeights, setHybridWeights] = useState<HybridWeights>(DEFAULT_HYBRID_WEIGHTS)
-  const [maxResults, setMaxResults] = useState(DEFAULT_MAX_RESULTS)
-  const [minScore, setMinScore] = useState(DEFAULT_MIN_SCORE)
-  const [llmMaxTokens, setLlmMaxTokens] = useState(LLM_MAX_TOKENS)
+  const [hybridWeights, setHybridWeights] = useState<HybridWeights>(
+    initialPrefs?.hybridWeights ?? DEFAULT_HYBRID_WEIGHTS,
+  )
+  const [maxResults, setMaxResults] = useState(initialPrefs?.maxResults ?? DEFAULT_MAX_RESULTS)
+  const [minScore, setMinScore] = useState(initialPrefs?.minScore ?? DEFAULT_MIN_SCORE)
+  const [llmMaxTokens, setLlmMaxTokens] = useState(initialPrefs?.llmMaxTokens ?? LLM_MAX_TOKENS)
   const abortRef = useRef(0)
-  const initialSearchDone = useRef(false)
   // Always-current snapshot of prefs used by wrapped setters to avoid stale closures
   const prefsRef = useRef({ hybridWeights, maxResults, minScore, llmMaxTokens })
   prefsRef.current = { hybridWeights, maxResults, minScore, llmMaxTokens }
-  // Blocks the initial search until saved preferences are loaded from the DB,
-  // preventing a first search with defaults followed by a re-search with saved prefs.
-  const [prefsReady, setPrefsReady] = useState(false)
 
-  // Load persisted preferences from the library on mount
-  useEffect(() => {
-    libraryService.getLibraryById(libraryId).then((library) => {
-      if (library?.searchPreferences) {
-        const { hybridWeights: hw, maxResults: mr, minScore: ms, llmMaxTokens: lmt } = library.searchPreferences
-        setHybridWeights(hw)
-        setMaxResults(mr)
-        setMinScore(ms)
-        if (lmt !== undefined) setLlmMaxTokens(lmt)
-      }
-      setPrefsReady(true)
-    })
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
+  // Returns the results it produced so the orchestrator can react without waiting
+  // for a re-render. Empty query / stale run / error all resolve to [].
   const performSearch = useCallback(
-    async (searchQuery: string) => {
+    async (searchQuery: string): Promise<SearchResult[]> => {
       const trimmed = searchQuery.trim()
       setQuery(searchQuery)
 
@@ -48,7 +48,7 @@ export function useSearch(libraryId: string, initialQuery = '') {
         setResults([])
         setError(null)
         setHasSearched(false)
-        return
+        return []
       }
 
       const searchId = ++abortRef.current
@@ -56,17 +56,24 @@ export function useSearch(libraryId: string, initialQuery = '') {
       setError(null)
 
       try {
-        const searchResults = await searchService(trimmed, libraryId, maxResults, hybridWeights, minScore)
-        if (searchId === abortRef.current) {
-          setResults(searchResults)
-          setHasSearched(true)
-        }
+        const searchResults = await searchService(
+          trimmed,
+          libraryId,
+          maxResults,
+          hybridWeights,
+          minScore,
+        )
+        if (searchId !== abortRef.current) return []
+        setResults(searchResults)
+        setHasSearched(true)
+        return searchResults
       } catch (err) {
         if (searchId === abortRef.current) {
           setError(err instanceof Error ? err.message : 'Search failed')
           setResults([])
           setHasSearched(true)
         }
+        return []
       } finally {
         if (searchId === abortRef.current) {
           setIsSearching(false)
@@ -84,42 +91,49 @@ export function useSearch(libraryId: string, initialQuery = '') {
     abortRef.current++
   }, [])
 
-  useEffect(() => {
-    if (!prefsReady) return
-    if (initialQuery.trim() && !initialSearchDone.current) {
-      initialSearchDone.current = true
-      performSearch(initialQuery)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialQuery, prefsReady])
+  const handleSetHybridWeights = useCallback(
+    (weights: HybridWeights) => {
+      setHybridWeights(weights)
+      libraryService.updateSearchPreferences(libraryId, {
+        ...prefsRef.current,
+        hybridWeights: weights,
+      })
+    },
+    [libraryId],
+  )
 
-  // Re-run search when search config changes
-  useEffect(() => {
-    if (query.trim() && hasSearched) {
-      performSearch(query)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hybridWeights, maxResults, minScore])
+  const handleSetMaxResults = useCallback(
+    (n: number) => {
+      setMaxResults(n)
+      libraryService.updateSearchPreferences(libraryId, {
+        ...prefsRef.current,
+        maxResults: n,
+      })
+    },
+    [libraryId],
+  )
 
-  const handleSetHybridWeights = useCallback((weights: HybridWeights) => {
-    setHybridWeights(weights)
-    libraryService.updateSearchPreferences(libraryId, { ...prefsRef.current, hybridWeights: weights })
-  }, [libraryId])
+  const handleSetMinScore = useCallback(
+    (n: number) => {
+      setMinScore(n)
+      libraryService.updateSearchPreferences(libraryId, {
+        ...prefsRef.current,
+        minScore: n,
+      })
+    },
+    [libraryId],
+  )
 
-  const handleSetMaxResults = useCallback((n: number) => {
-    setMaxResults(n)
-    libraryService.updateSearchPreferences(libraryId, { ...prefsRef.current, maxResults: n })
-  }, [libraryId])
-
-  const handleSetMinScore = useCallback((n: number) => {
-    setMinScore(n)
-    libraryService.updateSearchPreferences(libraryId, { ...prefsRef.current, minScore: n })
-  }, [libraryId])
-
-  const handleSetLlmMaxTokens = useCallback((n: number) => {
-    setLlmMaxTokens(n)
-    libraryService.updateSearchPreferences(libraryId, { ...prefsRef.current, llmMaxTokens: n })
-  }, [libraryId])
+  const handleSetLlmMaxTokens = useCallback(
+    (n: number) => {
+      setLlmMaxTokens(n)
+      libraryService.updateSearchPreferences(libraryId, {
+        ...prefsRef.current,
+        llmMaxTokens: n,
+      })
+    },
+    [libraryId],
+  )
 
   return {
     query,

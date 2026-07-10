@@ -1,10 +1,14 @@
 import { useState, useCallback, useRef } from 'react'
+import { toast } from 'sonner'
 import { useAppStore } from '@/store/app.store'
 import { initLLMModel, generateAnswer, abortLLMGeneration } from '@/services/llm/llm.service'
 import type { LLMCitation } from '@/services/llm/llm.service'
 import type { SearchResult } from '@/types/search'
+import { ModelDownloadToast } from '@/components/search/ModelDownloadToast'
 
 const AI_MODE_KEY = 'rag:ai-mode'
+/** Stable id so the progress toast and its success/error transition target the same toast. */
+const LLM_DOWNLOAD_TOAST_ID = 'llm-model-download'
 
 interface LLMAnswerInit {
   answer?: string
@@ -33,15 +37,22 @@ export function useLLMAnswer(init: LLMAnswerInit = {}) {
     setLoadError(null)
     setLlmStatus('loading')
     setLlmProgress(0)
+    // Live progress toast; its content subscribes to the store so it updates itself.
+    toast(<ModelDownloadToast model="llm" />, { id: LLM_DOWNLOAD_TOAST_ID, duration: Infinity })
     try {
       await initLLMModel((progress, _text) => {
         setLlmProgress(Math.round(progress * 100))
       })
       setLlmStatus('ready')
+      // Keep the SAME toast (now showing 100% / "AI model ready") and dismiss it
+      // after a moment — swapping in a separate success toast reads as confusing.
+      setTimeout(() => toast.dismiss(LLM_DOWNLOAD_TOAST_ID), 2000)
     } catch (err) {
       console.error('Failed to load LLM:', err)
-      setLoadError(err instanceof Error ? err.message : 'Failed to load AI model')
+      const message = err instanceof Error ? err.message : 'Failed to load AI model'
+      setLoadError(message)
       setLlmStatus('error')
+      toast.error(message, { id: LLM_DOWNLOAD_TOAST_ID, duration: 6000 })
     }
   }, [llmStatus, setLlmStatus, setLlmProgress])
 
