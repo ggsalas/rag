@@ -4,19 +4,38 @@ import * as libraryService from '@/services/library.service'
 import { DEFAULT_MAX_RESULTS, DEFAULT_MIN_SCORE, DEFAULT_HYBRID_WEIGHTS, LLM_MAX_TOKENS } from '@/lib/constants'
 import type { SearchResult, HybridWeights } from '@/types/search'
 
-/** Hook for performing hybrid search within a library */
-export function useSearch(libraryId: string, initialQuery = '') {
+interface UseSearchInitial {
+  query: string
+  results: SearchResult[]
+}
+
+/**
+ * Hook for performing hybrid search within a library.
+ *
+ * When `initial` is provided (results already computed elsewhere, e.g. restored
+ * from route state), it hydrates the hook without re-running the search. This
+ * is what keeps navigation back to the search page cheap — otherwise every
+ * remount re-triggers the pipeline (LLM + embeddings + fusion under HyDE).
+ */
+export function useSearch(
+  libraryId: string,
+  initialQuery = '',
+  initial?: UseSearchInitial,
+) {
+  const hasInitial = !!initial && initial.query === initialQuery && initialQuery.trim().length > 0
   const [query, setQuery] = useState(initialQuery)
-  const [results, setResults] = useState<SearchResult[]>([])
+  const [results, setResults] = useState<SearchResult[]>(hasInitial ? initial!.results : [])
   const [isSearching, setIsSearching] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [hasSearched, setHasSearched] = useState(false)
+  const [hasSearched, setHasSearched] = useState(hasInitial)
   const [hybridWeights, setHybridWeights] = useState<HybridWeights>(DEFAULT_HYBRID_WEIGHTS)
   const [maxResults, setMaxResults] = useState(DEFAULT_MAX_RESULTS)
   const [minScore, setMinScore] = useState(DEFAULT_MIN_SCORE)
   const [llmMaxTokens, setLlmMaxTokens] = useState(LLM_MAX_TOKENS)
   const abortRef = useRef(0)
-  const initialSearchDone = useRef(false)
+  // When hydrated with initial results, mark the initial search as already
+  // done so the mount effect below doesn't re-fire the pipeline.
+  const initialSearchDone = useRef(hasInitial)
   // Always-current snapshot of prefs used by wrapped setters to avoid stale closures
   const prefsRef = useRef({ hybridWeights, maxResults, minScore, llmMaxTokens })
   prefsRef.current = { hybridWeights, maxResults, minScore, llmMaxTokens }
@@ -50,6 +69,12 @@ export function useSearch(libraryId: string, initialQuery = '') {
         setHasSearched(false)
         return
       }
+
+      // Mark before firing the pipeline so the "initial URL query" useEffect
+      // below doesn't double-fire when handleSearch also calls setSearchParams
+      // (URL update → initialQuery changes → effect sees !initialSearchDone
+      // and would run performSearch again, duplicating the whole pipeline).
+      initialSearchDone.current = true
 
       const searchId = ++abortRef.current
       setIsSearching(true)
@@ -93,8 +118,14 @@ export function useSearch(libraryId: string, initialQuery = '') {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialQuery, prefsReady])
 
-  // Re-run search when search config changes
+  // Re-run search when the user changes search config (weights, maxResults,
+  // minScore). Gated by a "user changed config" ref instead of `hasSearched`,
+  // because `hasSearched` starts true when we hydrate from route state — we
+  // must not re-run on that first mount. The ref flips only via the handlers
+  // below, so preference-loading effects can't accidentally trigger a search.
+  const configChangedByUser = useRef(false)
   useEffect(() => {
+    if (!configChangedByUser.current) return
     if (query.trim() && hasSearched) {
       performSearch(query)
     }
@@ -102,16 +133,19 @@ export function useSearch(libraryId: string, initialQuery = '') {
   }, [hybridWeights, maxResults, minScore])
 
   const handleSetHybridWeights = useCallback((weights: HybridWeights) => {
+    configChangedByUser.current = true
     setHybridWeights(weights)
     libraryService.updateSearchPreferences(libraryId, { ...prefsRef.current, hybridWeights: weights })
   }, [libraryId])
 
   const handleSetMaxResults = useCallback((n: number) => {
+    configChangedByUser.current = true
     setMaxResults(n)
     libraryService.updateSearchPreferences(libraryId, { ...prefsRef.current, maxResults: n })
   }, [libraryId])
 
   const handleSetMinScore = useCallback((n: number) => {
+    configChangedByUser.current = true
     setMinScore(n)
     libraryService.updateSearchPreferences(libraryId, { ...prefsRef.current, minScore: n })
   }, [libraryId])

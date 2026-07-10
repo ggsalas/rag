@@ -23,7 +23,8 @@ export const HYBRID_WEIGHT_PRESETS = {
 export type HybridWeightPreset = keyof typeof HYBRID_WEIGHT_PRESETS
 
 export const DEFAULT_HYBRID_PRESET: HybridWeightPreset = 'semantic'
-export const DEFAULT_HYBRID_WEIGHTS = HYBRID_WEIGHT_PRESETS[DEFAULT_HYBRID_PRESET]
+export const DEFAULT_HYBRID_WEIGHTS =
+  HYBRID_WEIGHT_PRESETS[DEFAULT_HYBRID_PRESET]
 
 export const EMBEDDING_MODEL_NAME = 'Xenova/bge-small-en-v1.5'
 export const EMBEDDING_DIMENSIONS = 384
@@ -45,8 +46,26 @@ export const EMBEDDING_PASSAGE_PREFIX = ''
  */
 export const MIN_ABSOLUTE_SCORE = 0.5
 
-export const LLM_MODEL_ID = 'Llama-3.2-1B-Instruct-q4f16_1-MLC'
+export const LLM_MODEL_ID = 'Qwen2.5-1.5B-Instruct-q4f16_1-MLC'
 export const LLM_CONTEXT_CHUNKS = 10
 export const LLM_MAX_TOKENS = 512
 /** Exact phrase the LLM must emit when the retrieved sources don't answer the query. */
 export const LLM_NO_ANSWER_MESSAGE = "I couldn't find that in the document."
+
+/**
+ * HyDE (Hypothetical Document Embeddings) config. Improves retrieval on short
+ * or relational queries by generating N hypothetical answer passages and
+ * fusing multiple vector searches with RRF. Kill switch: set HYDE_ENABLED
+ * to false to bypass entirely.
+ */
+export const HYDE_ENABLED = true
+/** Number of hypothetical passages generated per query. */
+export const HYDE_NUM_SAMPLES = 3
+/** Number of library chunks used as few-shot style examples in the HyDE prompt. */
+export const HYDE_LIBRARY_SAMPLES = 3
+/** Reciprocal Rank Fusion constant (standard value from Cormack et al. 2009). */
+export const HYDE_RRF_K = 60
+/** Max tokens for the HyDE generation call (covers all N samples in one call). */
+export const HYDE_MAX_TOKENS = 220
+/** If HyDE takes longer than this, fall back to plain search. */
+export const HYDE_TIMEOUT_MS = 10000

@@ -2,6 +2,15 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { search } from './search.service'
 import { DEFAULT_MAX_RESULTS } from '@/lib/constants'
 
+// Force HyDE off for these tests — they cover the plain-path behavior.
+// HyDE has its own tests in hyde.service.test.ts (or would; not yet written).
+vi.mock('@/lib/constants', async () => {
+  const actual = await vi.importActual<typeof import('@/lib/constants')>(
+    '@/lib/constants',
+  )
+  return { ...actual, HYDE_ENABLED: false }
+})
+
 // Mock the embedding service
 vi.mock('@/services/embedding/embedding.service', () => ({
   embed: vi.fn(),
