@@ -14,6 +14,7 @@ export type SearchResult = {
   documentName: string
   text: string
   score: number
-  page?: number
   chunkIndex: number
+  headingText: string
+  sectionPath: string[]
 }

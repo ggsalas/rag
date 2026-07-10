@@ -88,16 +88,15 @@ export function ResultCard({
         </div>
       </div>
 
-      {result.page && (
-        <p className="text-xs text-gray-500 mb-2">
-          Page {result.page} · Chunk {result.chunkIndex + 1}
-        </p>
-      )}
-      {!result.page && (
-        <p className="text-xs text-gray-500 mb-2">
-          Chunk {result.chunkIndex + 1}
-        </p>
-      )}
+      <p className="text-xs text-gray-500 mb-2">
+        {result.sectionPath.length > 0 && (
+          <span className="text-gray-600">
+            {result.sectionPath.join(' › ')}
+            <span className="mx-1.5">·</span>
+          </span>
+        )}
+        Chunk {result.chunkIndex + 1}
+      </p>
 
       <p className="text-sm text-gray-700 leading-relaxed line-clamp-4">
         {result.text}

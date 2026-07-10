@@ -9,9 +9,19 @@ export interface VectorSearchResult {
   documentName: string
   text: string
   score: number
-  page?: number
   chunkIndex: number
+  headingText: string
+  sectionPath: string[]
 }
+
+/**
+ * BM25 field boosts. `headingText` gets the strongest signal since an exact
+ * match with a section heading is nearly always the most relevant chunk in that
+ * section. `sectionPath` gets a smaller boost so ancestor-heading matches still
+ * surface (e.g., searching "Discography" while the immediate heading is a
+ * subsection like "Studio albums").
+ */
+const SEARCH_BOOST = { headingText: 3, sectionPath: 1.5, text: 1 } as const
 
 const indexes = new Map<string, AnyOrama>()
 
@@ -23,8 +33,9 @@ async function createIndex(libraryId: string): Promise<AnyOrama> {
       documentId: 'string',
       documentName: 'string',
       text: 'string',
+      headingText: 'string',
+      sectionPath: 'string[]',
       embedding: `vector[${EMBEDDING_DIMENSIONS}]`,
-      page: 'number',
       chunkIndex: 'number',
     } as const,
   })
@@ -51,8 +62,9 @@ export async function insertChunks(
       documentId: chunk.documentId,
       documentName: chunk.documentName,
       text: chunk.text,
+      headingText: chunk.headingText,
+      sectionPath: chunk.sectionPath,
       embedding: chunk.embedding,
-      page: chunk.page ?? 0,
       chunkIndex: chunk.chunkIndex,
     })
   }
@@ -69,29 +81,38 @@ export async function searchHybrid(
   const index = indexes.get(libraryId)
   if (!index) return []
 
+  // Orama silently falls back to default 50/50 weights when either weight is
+  // exactly 0 (its internal `hybridWeights.text && hybridWeights.vector` check
+  // is truthy-based, not `!== undefined`). Clamp to a tiny floor to keep the
+  // slider extremes (0% / 100%) actually functional.
+  const raw = weights ?? { text: 0.5, vector: 0.5 }
+  const effectiveWeights = {
+    text: Math.max(0.001, raw.text),
+    vector: Math.max(0.001, raw.vector),
+  }
+
   const results = await search(index, {
     mode: 'hybrid',
     term,
     vector: { value: embedding, property: 'embedding' },
-    properties: ['text'],
+    properties: ['text', 'headingText', 'sectionPath'],
+    boost: SEARCH_BOOST,
     limit: topK ?? DEFAULT_MAX_RESULTS,
     includeVectors: false,
     similarity: 0.0,
-    hybridWeights: weights ?? { text: 0.5, vector: 0.5 },
+    hybridWeights: effectiveWeights,
   })
 
-  return results.hits.map((hit) => {
-    const page = hit.document.page as number
-    return {
-      chunkId: hit.document.chunkId as string,
-      documentId: hit.document.documentId as string,
-      documentName: hit.document.documentName as string,
-      text: hit.document.text as string,
-      score: hit.score,
-      page: page === 0 ? undefined : page,
-      chunkIndex: hit.document.chunkIndex as number,
-    }
-  })
+  return results.hits.map((hit) => ({
+    chunkId: hit.document.chunkId as string,
+    documentId: hit.document.documentId as string,
+    documentName: hit.document.documentName as string,
+    text: hit.document.text as string,
+    score: hit.score,
+    chunkIndex: hit.document.chunkIndex as number,
+    headingText: (hit.document.headingText as string) ?? '',
+    sectionPath: (hit.document.sectionPath as string[]) ?? [],
+  }))
 }
 
 /** Performs vector similarity search within a library's index */
@@ -111,18 +132,16 @@ export async function searchByVector(
     similarity: 0.0,
   })
 
-  return results.hits.map((hit) => {
-    const page = hit.document.page as number
-    return {
-      chunkId: hit.document.chunkId as string,
-      documentId: hit.document.documentId as string,
-      documentName: hit.document.documentName as string,
-      text: hit.document.text as string,
-      score: hit.score,
-      page: page === 0 ? undefined : page,
-      chunkIndex: hit.document.chunkIndex as number,
-    }
-  })
+  return results.hits.map((hit) => ({
+    chunkId: hit.document.chunkId as string,
+    documentId: hit.document.documentId as string,
+    documentName: hit.document.documentName as string,
+    text: hit.document.text as string,
+    score: hit.score,
+    chunkIndex: hit.document.chunkIndex as number,
+    headingText: (hit.document.headingText as string) ?? '',
+    sectionPath: (hit.document.sectionPath as string[]) ?? [],
+  }))
 }
 
 /** Removes all chunks belonging to a specific document from the vector index */

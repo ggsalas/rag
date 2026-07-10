@@ -1,7 +1,9 @@
 import { generateId } from '@/lib/utils'
 import { parseFile } from './parser.service'
-import { chunkText, chunkTextWithPages, chunkMarkdown } from './chunking.service'
-import { embedBatch } from '@/services/embedding/embedding.service'
+import { chunkText, chunkMarkdown } from './chunking.service'
+import { sanitize } from './sanitize.service'
+import { extractMainContent } from './content-extractor.service'
+import { embedPassages } from '@/services/embedding/embedding.service'
 import { insertChunks } from '@/services/embedding/vector-store'
 import { db } from '@/infrastructure/db'
 import {
@@ -61,22 +63,32 @@ async function processDocument(
       )
     })
 
+    // Sanitize (Unicode normalization, invisible chars, AST-safe whitespace).
+    const cleanText = sanitize(parseResult.text)
+
+    // Content extraction (Readability-inspired, markdown-native): drops
+    // boilerplate sections like "References", "See also", "External links",
+    // "Notes" — the noisy tails of Wikipedia dumps and academic PDFs.
+    const extractedText = extractMainContent(cleanText)
+
     await saveDocumentContent({
       documentId: docMeta.id,
       libraryId,
-      text: parseResult.text,
-      pages: parseResult.pages,
+      text: extractedText,
     })
 
     await updateDocumentStatus(docMeta.id, 'chunking')
     await updateProgress(docMeta.id, PROGRESS.CHUNKING[0])
 
-    const isMarkdown = docMeta.name.endsWith('.md') || docMeta.name.endsWith('.markdown')
-    const chunkDataList = parseResult.pages
-      ? chunkTextWithPages(parseResult.pages)
-      : isMarkdown
-        ? chunkMarkdown(parseResult.text)
-        : chunkText(parseResult.text)
+    // PDFs return structured markdown from LiteParse, so they take the same
+    // markdown path as native .md files. Plain-text formats use paragraph chunking.
+    const isStructuredMarkdown =
+      docMeta.type === 'pdf' ||
+      docMeta.name.endsWith('.md') ||
+      docMeta.name.endsWith('.markdown')
+    const chunkDataList = isStructuredMarkdown
+      ? chunkMarkdown(extractedText)
+      : chunkText(extractedText)
 
     if (chunkDataList.length === 0) {
       throw new Error('No text could be extracted from document')
@@ -86,7 +98,7 @@ async function processDocument(
     await updateProgress(docMeta.id, PROGRESS.EMBEDDING[0])
 
     const texts = chunkDataList.map((c) => c.text)
-    const embeddings = await embedBatch(texts, async (current, total) => {
+    const embeddings = await embedPassages(texts, async (current, total) => {
       await updateProgress(
         docMeta.id,
         mapRange(current, total, PROGRESS.EMBEDDING),
@@ -101,7 +113,8 @@ async function processDocument(
       chunkIndex: data.chunkIndex,
       text: data.text,
       embedding: embeddings[i]!,
-      page: data.page,
+      headingText: data.headingText,
+      sectionPath: data.sectionPath,
     }))
 
     await updateProgress(docMeta.id, PROGRESS.INDEXING[0])

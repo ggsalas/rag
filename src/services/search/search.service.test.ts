@@ -2,6 +2,15 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { search } from './search.service'
 import { DEFAULT_MAX_RESULTS } from '@/lib/constants'
 
+// Force HyDE off for these tests — they cover the plain-path behavior.
+// HyDE has its own tests in hyde.service.test.ts (or would; not yet written).
+vi.mock('@/lib/constants', async () => {
+  const actual = await vi.importActual<typeof import('@/lib/constants')>(
+    '@/lib/constants',
+  )
+  return { ...actual, HYDE_ENABLED: false }
+})
+
 // Mock the embedding service
 vi.mock('@/services/embedding/embedding.service', () => ({
   embed: vi.fn(),
@@ -46,8 +55,9 @@ describe('search.service', () => {
         documentName: 'test.pdf',
         text: 'sample text',
         score: 0.95,
-        page: 1,
         chunkIndex: 0,
+        headingText: '',
+        sectionPath: [],
       },
     ])
 
@@ -109,8 +119,9 @@ describe('search.service', () => {
         documentName: 'doc.txt',
         text: 'some text',
         score: 0.8,
-        page: undefined,
         chunkIndex: 2,
+        headingText: '',
+        sectionPath: [],
       },
     ])
 
@@ -122,8 +133,9 @@ describe('search.service', () => {
       documentName: 'doc.txt',
       text: 'some text',
       score: 0.8,
-      page: undefined,
       chunkIndex: 2,
+      headingText: '',
+      sectionPath: [],
     })
   })
 
@@ -142,5 +154,67 @@ describe('search.service', () => {
       DEFAULT_MAX_RESULTS,
       customWeights,
     )
+  })
+
+  it('drops all results when the top score is below the absolute floor', async () => {
+    // Every score sits under MIN_ABSOLUTE_SCORE (0.5) — the "best of the bad"
+    // case. Even though the relative threshold (70% of top = 0.28) would let
+    // these through, the absolute floor rejects them.
+    mockEmbed.mockResolvedValue(Array(384).fill(0.1))
+    mockSearchHybrid.mockResolvedValue([
+      {
+        chunkId: 'c-1',
+        documentId: 'd-1',
+        documentName: 'weak.md',
+        text: 'weak match',
+        score: 0.4,
+        chunkIndex: 0,
+        headingText: '',
+        sectionPath: [],
+      },
+      {
+        chunkId: 'c-2',
+        documentId: 'd-1',
+        documentName: 'weak.md',
+        text: 'weaker match',
+        score: 0.3,
+        chunkIndex: 1,
+        headingText: '',
+        sectionPath: [],
+      },
+    ])
+
+    const results = await search('glitter', 'lib-1')
+    expect(results).toEqual([])
+  })
+
+  it('keeps strong results and drops weak ones below the absolute floor', async () => {
+    mockEmbed.mockResolvedValue(Array(384).fill(0.1))
+    mockSearchHybrid.mockResolvedValue([
+      {
+        chunkId: 'strong',
+        documentId: 'd-1',
+        documentName: 'doc.md',
+        text: 'strong match',
+        score: 0.85,
+        chunkIndex: 0,
+        headingText: '',
+        sectionPath: [],
+      },
+      {
+        chunkId: 'weak',
+        documentId: 'd-1',
+        documentName: 'doc.md',
+        text: 'weak match',
+        score: 0.4,
+        chunkIndex: 1,
+        headingText: '',
+        sectionPath: [],
+      },
+    ])
+
+    const results = await search('discography', 'lib-1')
+    expect(results).toHaveLength(1)
+    expect(results[0]!.chunkId).toBe('strong')
   })
 })

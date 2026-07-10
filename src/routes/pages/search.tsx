@@ -31,10 +31,16 @@ interface SavedAi {
   llmMaxTokens: number
 }
 
+interface SavedSearch {
+  query: string
+  results: SearchResult[]
+}
+
 interface LocationState {
   searchQuery?: string
   focusedChunkId?: string | null
   savedAi?: SavedAi
+  savedSearch?: SavedSearch
 }
 
 export function SearchPage() {
@@ -53,6 +59,13 @@ export function SearchPage() {
     locationState.focusedChunkId ?? null,
   )
 
+  // Restore previously computed results from route state when the query matches.
+  // Skips the HyDE pipeline on remounts (browser back, doc viewer → search).
+  const savedSearch =
+    locationState.savedSearch?.query === initialQuery
+      ? locationState.savedSearch
+      : undefined
+
   const {
     query,
     results,
@@ -68,7 +81,11 @@ export function SearchPage() {
     setMinScore,
     llmMaxTokens,
     setLlmMaxTokens,
-  } = useSearch(libraryId!, modelStatus === 'ready' ? initialQuery : '')
+  } = useSearch(
+    libraryId!,
+    modelStatus === 'ready' ? initialQuery : '',
+    savedSearch ? { query: savedSearch.query, results: savedSearch.results } : undefined,
+  )
 
   // Restore AI answer from route state if the query matches
   const savedAi =
@@ -86,6 +103,7 @@ export function SearchPage() {
     llmStatus,
     llmProgress,
     llmError,
+    loadError,
     generate,
     clear: clearAnswer,
     loadModel: loadLLM,
@@ -117,6 +135,27 @@ export function SearchPage() {
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isGenerating])
+
+  // Persist completed search results to route state so navigating away and back
+  // (browser back, doc viewer, etc.) restores them without re-running the pipeline.
+  // Only fires on a fresh successful search; skips remounts that restored from state.
+  useEffect(() => {
+    if (isSearching || !hasSearched) return
+    if (!query.trim()) return
+    if (
+      locationState.savedSearch?.query === query &&
+      locationState.savedSearch?.results.length === results.length
+    )
+      return
+    navigate(location.pathname + location.search, {
+      replace: true,
+      state: {
+        ...locationState,
+        savedSearch: { query, results },
+      },
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isSearching, hasSearched, results])
 
   // Tracks the signature (doc+chunk keys + maxTokens) last sent to the LLM. Initialized from
   // savedAi so navigating back with same context skips re-gen — uses the maxTokens the answer
@@ -210,6 +249,7 @@ export function SearchPage() {
               llmStatus={llmStatus}
               llmProgress={llmProgress}
               error={llmError}
+              loadError={loadError}
               onCitationClick={(c) => setFocusedChunkId(c.chunkId)}
             />
           </div>

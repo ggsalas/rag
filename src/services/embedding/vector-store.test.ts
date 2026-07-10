@@ -19,6 +19,8 @@ function makeChunk(overrides: Partial<Chunk> = {}): Chunk {
     chunkIndex: 0,
     text: 'sample text',
     embedding: Array(384).fill(0.1),
+    headingText: '',
+    sectionPath: [],
     ...overrides,
   }
 }

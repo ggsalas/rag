@@ -8,6 +8,7 @@ interface LLMAnswerProps {
   llmStatus: ModelStatus
   llmProgress: number
   error: string | null
+  loadError?: string | null
   onCitationClick: (citation: LLMCitation) => void
 }
 
@@ -35,7 +36,7 @@ function AnswerText({
                 type="button"
                 onClick={() => onCitationClick(citation)}
                 className="inline-flex items-center justify-center w-5 h-5 text-xs font-semibold text-blue-700 bg-blue-100 rounded hover:bg-blue-200 transition-colors align-baseline mx-0.5"
-                title={`${citation.documentName}${citation.page ? ` · p.${citation.page}` : ''}`}
+                title={citation.documentName}
               >
                 {idx}
               </button>
@@ -55,6 +56,7 @@ export function LLMAnswer({
   llmStatus,
   llmProgress,
   error,
+  loadError,
   onCitationClick,
 }: LLMAnswerProps) {
   if (llmStatus === 'loading') {
@@ -83,10 +85,10 @@ export function LLMAnswer({
   if (llmStatus === 'error') {
     return (
       <div className="rounded-lg border border-red-200 bg-red-50 p-4">
-        <div className="flex items-center gap-2">
-          <SparklesIcon className="h-4 w-4 text-red-500 shrink-0" />
+        <div className="flex items-start gap-2">
+          <SparklesIcon className="h-4 w-4 text-red-500 shrink-0 mt-0.5" />
           <span className="text-sm text-red-700">
-            Failed to load AI model. Check the browser console for details.
+            {loadError ?? 'Failed to load AI model.'}
           </span>
         </div>
       </div>

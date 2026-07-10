@@ -3,7 +3,10 @@ import { CHUNK_SIZE, CHUNK_OVERLAP } from '@/lib/constants'
 export interface ChunkData {
   text: string
   chunkIndex: number
-  page?: number
+  /** Immediate heading of the section this chunk belongs to, or '' for pre-heading preamble */
+  headingText: string
+  /** Root → leaf breadcrumb of ancestor headings */
+  sectionPath: string[]
 }
 
 export interface ChunkOptions {
@@ -33,7 +36,12 @@ export function chunkText(text: string, options?: ChunkOptions): ChunkData[] {
       currentChunk.length + trimmed.length + 1 > size &&
       currentChunk.length > 0
     ) {
-      chunks.push({ text: currentChunk.trim(), chunkIndex })
+      chunks.push({
+        text: currentChunk.trim(),
+        chunkIndex,
+        headingText: '',
+        sectionPath: [],
+      })
       chunkIndex++
 
       // Overlap: keep the last `overlap` chars from the previous chunk
@@ -52,6 +60,8 @@ export function chunkText(text: string, options?: ChunkOptions): ChunkData[] {
       chunks.push({
         text: currentChunk.slice(0, breakPoint).trim(),
         chunkIndex,
+        headingText: '',
+        sectionPath: [],
       })
       chunkIndex++
 
@@ -61,93 +71,143 @@ export function chunkText(text: string, options?: ChunkOptions): ChunkData[] {
   }
 
   if (currentChunk.trim()) {
-    chunks.push({ text: currentChunk.trim(), chunkIndex })
+    chunks.push({
+      text: currentChunk.trim(),
+      chunkIndex,
+      headingText: '',
+      sectionPath: [],
+    })
   }
 
   return chunks
 }
 
-/** Chunks text with page information preserved (for PDF documents) */
-export function chunkTextWithPages(
-  pages: string[],
+interface Section {
+  path: string[]
+  headingText: string
+  level: number // 1..6, or 0 for pre-heading preamble
+  body: string
+}
+
+/**
+ * Walks the markdown line by line, maintaining a heading stack. Emits one
+ * `Section` per contiguous body between headings, carrying the full breadcrumb.
+ *
+ * Stack semantics: when a level-N heading appears, all active headings at
+ * level >= N are dropped and the new heading is pushed at level N. This
+ * guarantees a chunk under `## Artistry > ### Influences` doesn't inherit
+ * a stale H3 from a previous parent section.
+ */
+function parseSections(text: string): Section[] {
+  const sections: Section[] = []
+  const stack: string[] = [] // stack[i] = heading title at level i+1
+  let bodyLines: string[] = []
+  let currentHeading = ''
+  let currentLevel = 0
+
+  const flush = () => {
+    const body = bodyLines.join('\n').trim()
+    if (!body && !currentHeading) return
+    sections.push({
+      path: stack.filter(Boolean),
+      headingText: currentHeading,
+      level: currentLevel,
+      body,
+    })
+  }
+
+  for (const line of text.split('\n')) {
+    const m = line.match(/^(#{1,6}) (.+)$/)
+    if (m) {
+      // Emit the section that just ended (if any).
+      flush()
+      const level = m[1]!.length
+      const title = m[2]!.trim()
+      // Pop all headings at level >= this one, then set this level.
+      stack.length = level - 1
+      stack.push(title)
+      currentHeading = title
+      currentLevel = level
+      bodyLines = []
+    } else {
+      bodyLines.push(line)
+    }
+  }
+  flush()
+
+  return sections
+}
+
+/**
+ * Formats the immediate heading as a markdown prefix that gets prepended
+ * to each chunk's text. This ensures both the vector embedding and the BM25
+ * text-field pick up the section's heading term, so a chunk under
+ * `## Discography` still surfaces for the query "Discography" even when its
+ * body doesn't repeat the word.
+ */
+function headingPrefix(section: Section): string {
+  if (!section.headingText || section.level === 0) return ''
+  return '#'.repeat(section.level) + ' ' + section.headingText
+}
+
+/**
+ * Chunks markdown by heading sections. Each chunk carries the immediate
+ * heading (prepended to `text`) plus full-breadcrumb metadata for retrieval.
+ * Sections that exceed `size` are split via paragraph chunking; every sub-chunk
+ * inherits the same heading and sectionPath.
+ */
+export function chunkMarkdown(
+  text: string,
   options?: ChunkOptions,
 ): ChunkData[] {
   const size = options?.size ?? CHUNK_SIZE
   const overlap = options?.overlap ?? CHUNK_OVERLAP
   const chunks: ChunkData[] = []
   let chunkIndex = 0
-  let currentChunk = ''
-  let currentPage = 1
 
-  for (let pageIdx = 0; pageIdx < pages.length; pageIdx++) {
-    const pageText = pages[pageIdx]!.trim()
-    if (!pageText) continue
+  for (const section of parseSections(text)) {
+    if (!section.body.trim() && !section.headingText) continue
 
-    const sentences = splitSentences(pageText)
-    for (const sentence of sentences) {
-      if (
-        currentChunk.length + sentence.length + 1 > size &&
-        currentChunk.length > 0
-      ) {
-        chunks.push({
-          text: currentChunk.trim(),
-          chunkIndex,
-          page: currentPage,
-        })
-        chunkIndex++
-        if (overlap > 0 && currentChunk.length > overlap) {
-          currentChunk = currentChunk.slice(-overlap) + ' ' + sentence
-        } else {
-          currentChunk = sentence
-        }
-      } else {
-        currentChunk = currentChunk ? currentChunk + ' ' + sentence : sentence
-      }
-      currentPage = pageIdx + 1
-    }
-  }
+    const prefix = headingPrefix(section)
+    const body = section.body.trim()
 
-  if (currentChunk.trim()) {
-    chunks.push({ text: currentChunk.trim(), chunkIndex, page: currentPage })
-  }
+    // Section without body content (just a heading with nothing underneath):
+    // skip — it's boilerplate that would embed poorly. Its heading is still
+    // carried into child-section chunks via sectionPath.
+    if (prefix && !body) continue
 
-  return chunks
-}
+    // Combined form used when the whole section fits under `size`.
+    const combined = prefix
+      ? body
+        ? `${prefix}\n\n${body}`
+        : prefix
+      : body
 
-/**
- * Chunks markdown by heading sections. Each heading + its content becomes a chunk.
- * Sections that exceed the size limit are split further by paragraph.
- */
-export function chunkMarkdown(text: string, options?: ChunkOptions): ChunkData[] {
-  const size = options?.size ?? CHUNK_SIZE
-  const overlap = options?.overlap ?? CHUNK_OVERLAP
-  const chunks: ChunkData[] = []
-  let chunkIndex = 0
-
-  // Split into sections, keeping each heading attached to its content
-  const parts = text.split(/^(#{1,6} .+)$/m)
-  const sections: string[] = []
-
-  if (parts[0]?.trim()) sections.push(parts[0].trim())
-
-  for (let i = 1; i < parts.length; i += 2) {
-    const section = ((parts[i] ?? '') + '\n' + (parts[i + 1] ?? '')).trim()
-    if (section) sections.push(section)
-  }
-
-  for (const section of sections) {
-    if (!section.trim()) continue
-
-    if (section.length <= size) {
-      chunks.push({ text: section, chunkIndex })
+    if (combined.length <= size) {
+      chunks.push({
+        text: combined,
+        chunkIndex,
+        headingText: section.headingText,
+        sectionPath: [...section.path],
+      })
       chunkIndex++
-    } else {
-      // Section too long — fall back to paragraph chunking within the section
-      const subChunks = chunkText(section, { size, overlap })
-      for (const sub of subChunks) {
-        chunks.push({ text: sub.text, chunkIndex })
-        chunkIndex++
-      }
+      continue
+    }
+
+    // Section too long — chunk the body and prepend the heading to each piece.
+    // Reserve room in `size` for the heading so the final chunk stays under budget.
+    const budget = prefix ? Math.max(200, size - prefix.length - 2) : size
+    const subChunks = chunkText(body, { size: budget, overlap })
+
+    for (const sub of subChunks) {
+      const chunkText = prefix ? `${prefix}\n\n${sub.text}` : sub.text
+      chunks.push({
+        text: chunkText,
+        chunkIndex,
+        headingText: section.headingText,
+        sectionPath: [...section.path],
+      })
+      chunkIndex++
     }
   }
 
@@ -163,9 +223,4 @@ function findBreakPoint(text: string, maxLength: number): number {
   const lastSpace = sub.lastIndexOf(' ')
   if (lastSpace > maxLength * 0.3) return lastSpace + 1
   return maxLength
-}
-
-/** Splits text into sentences for fine-grained chunking */
-function splitSentences(text: string): string[] {
-  return text.match(/[^.!?]+[.!?]+\s*|[^.!?]+$/g) || [text]
 }
