@@ -15,6 +15,7 @@ import { MainPanel } from '@/components/sidebar/MainPanel'
 import { DocumentViewerHeader } from '@/components/document-viewer/DocumentViewerHeader'
 import { HighlightedText } from '@/components/document-viewer/HighlightedText'
 import type { DocumentContent, DocumentMeta } from '@/types/document'
+import type { SavedSearchState } from '@/hooks/useSearchSession'
 
 export function DocumentViewerPage() {
   const { libraryId, documentId } = useParams<{
@@ -32,11 +33,9 @@ export function DocumentViewerPage() {
 
   const { deleteDocument } = useDocumentActions()
   const locationState = location.state as {
-    searchQuery?: string
-    savedAi?: unknown
+    savedSearchState?: SavedSearchState
   } | null
-  const searchQuery = locationState?.searchQuery
-  const savedAi = locationState?.savedAi
+  const savedSearchState = locationState?.savedSearchState
 
   const highlightChunkIndex = searchParams.get('chunk')
     ? parseInt(searchParams.get('chunk')!, 10)
@@ -83,10 +82,11 @@ export function DocumentViewerPage() {
 
   const handleDelete = async () => {
     await deleteDocument(documentId!)
+    const searchQuery = savedSearchState?.query
     const backUrl = searchQuery
       ? `/libraries/${libraryId}/search?q=${encodeURIComponent(searchQuery)}`
       : `/libraries/${libraryId}/search`
-    navigate(backUrl, { state: { searchQuery, savedAi } })
+    navigate(backUrl, { state: { savedSearchState } })
   }
 
   if (isLoading) {
@@ -113,9 +113,21 @@ export function DocumentViewerPage() {
 
   if (!document) return null
 
+  const searchQuery = savedSearchState?.query
   const backToSearchUrl = searchQuery
     ? `/libraries/${libraryId}/search?q=${encodeURIComponent(searchQuery)}`
     : `/libraries/${libraryId}/search`
+
+  // Update focusedChunkId in the state when navigating back
+  const backState: { savedSearchState?: SavedSearchState } | undefined =
+    savedSearchState
+      ? {
+          savedSearchState: {
+            ...savedSearchState,
+            focusedChunkId: chunk?.id ?? null,
+          },
+        }
+      : undefined
 
   return (
     <MainPanel>
@@ -123,11 +135,7 @@ export function DocumentViewerPage() {
         <DocumentViewerHeader
           document={document}
           backToSearchUrl={backToSearchUrl}
-          backToSearchState={{
-            searchQuery,
-            focusedChunkId: chunk?.id ?? null,
-            savedAi,
-          }}
+          backToSearchState={backState}
           highlightChunkIndex={highlightChunkIndex}
           onNavigateChunk={navigateToChunk}
           onDelete={handleDelete}

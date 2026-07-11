@@ -1,16 +1,13 @@
 import { Link } from 'react-router'
 import type { DocumentMeta } from '@/types/document'
+import type { SavedSearchState } from '@/hooks/useSearchSession'
 import { DeleteButton } from '@/components/ui/DeleteButton'
 import { buttonClasses } from '@/components/ui/Button'
 
 interface DocumentViewerHeaderProps {
   document: DocumentMeta
   backToSearchUrl: string
-  backToSearchState: {
-    searchQuery?: string
-    focusedChunkId: string | null
-    savedAi?: unknown
-  }
+  backToSearchState?: { savedSearchState?: SavedSearchState }
   highlightChunkIndex: number | null
   onNavigateChunk: (index: number) => void
   onDelete: () => void

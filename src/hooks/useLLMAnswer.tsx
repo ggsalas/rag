@@ -6,7 +6,6 @@ import type { LLMCitation } from '@/services/llm/llm.service'
 import type { SearchResult } from '@/types/search'
 import { ModelDownloadToast } from '@/components/search/ModelDownloadToast'
 
-const AI_MODE_KEY = 'rag:ai-mode'
 /** Stable id so the progress toast and its success/error transition target the same toast. */
 const LLM_DOWNLOAD_TOAST_ID = 'llm-model-download'
 
@@ -16,9 +15,8 @@ interface LLMAnswerInit {
   answeredQuery?: string
 }
 
-/** Hook that manages AI answer mode — model loading, generation, and streaming state */
+/** Hook that manages AI answer generation — model loading, generation, and streaming state */
 export function useLLMAnswer(init: LLMAnswerInit = {}) {
-  const [isAiMode, setIsAiMode] = useState(() => localStorage.getItem(AI_MODE_KEY) === 'true')
   const [answer, setAnswer] = useState(init.answer ?? '')
   const [citations, setCitations] = useState<LLMCitation[]>(init.citations ?? [])
   const [answeredQuery, setAnsweredQuery] = useState(init.answeredQuery ?? '')
@@ -55,13 +53,6 @@ export function useLLMAnswer(init: LLMAnswerInit = {}) {
       toast.error(message, { id: LLM_DOWNLOAD_TOAST_ID, duration: 6000 })
     }
   }, [llmStatus, setLlmStatus, setLlmProgress])
-
-  const toggleAiMode = useCallback(() => {
-    const next = !isAiMode
-    setIsAiMode(next)
-    localStorage.setItem(AI_MODE_KEY, String(next))
-    if (next) loadModel()
-  }, [isAiMode, loadModel])
 
   const generate = useCallback(
     async (query: string, results: SearchResult[], maxTokens?: number) => {
@@ -116,8 +107,6 @@ export function useLLMAnswer(init: LLMAnswerInit = {}) {
   }, [])
 
   return {
-    isAiMode,
-    toggleAiMode,
     answer,
     citations,
     answeredQuery,

@@ -7,11 +7,14 @@ import {
   type LoaderFunctionArgs,
   type ShouldRevalidateFunction,
 } from 'react-router'
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { useAppStore } from '@/store/app.store'
 import * as libraryService from '@/services/library.service'
 import type { SearchPreferences } from '@/types/library'
-import { useSearchSession, type SavedAi } from '@/hooks/useSearchSession'
+import {
+  useSearchSession,
+  type SavedSearchState,
+} from '@/hooks/useSearchSession'
 import { useOramaHydration } from '@/hooks/useOramaHydration'
 import { SearchBar } from '@/components/search/SearchBar'
 import { ResultList } from '@/components/search/ResultList'
@@ -20,9 +23,7 @@ import { ModelDownloadModal } from '@/components/search/ModelDownloadModal'
 import { MainPanel } from '@/components/sidebar/MainPanel'
 
 interface LocationState {
-  searchQuery?: string
-  focusedChunkId?: string | null
-  savedAi?: SavedAi
+  savedSearchState?: SavedSearchState
 }
 
 interface SearchLoaderData {
@@ -64,23 +65,19 @@ export function SearchPage() {
   useOramaHydration(libraryId)
 
   const locationState = (location.state ?? {}) as LocationState
-  const initialQuery = searchParams.get('q') || locationState.searchQuery || ''
-  // Restore AI answer from route state only if it belongs to the query we're loading.
-  const savedAi =
-    locationState.savedAi?.query === initialQuery ? locationState.savedAi : undefined
+  const urlQuery = searchParams.get('q') || ''
 
-  const session = useSearchSession(libraryId!, {
-    embeddingReady: modelStatus === 'ready',
-    initialQuery,
-    savedAi,
-    initialFocusedChunkId: locationState.focusedChunkId ?? null,
-    initialPrefs: searchPreferences,
-  })
+  // Restore state from navigation if query matches
+  const savedState =
+    locationState.savedSearchState?.query === urlQuery
+      ? locationState.savedSearchState
+      : undefined
 
   const {
-    phase,
+    status,
     results,
     isSearching,
+    isGenerating,
     error,
     hasSearched,
     hybridWeights,
@@ -95,7 +92,6 @@ export function SearchPage() {
     answer,
     citations,
     answeredQuery,
-    isGenerating,
     llmError,
     focusedChunkId,
     setFocusedChunkId,
@@ -104,41 +100,78 @@ export function SearchPage() {
     toggleAi,
     acceptModelDownload,
     cancelModelDownload,
-  } = session
+  } = useSearchSession(libraryId!, {
+    embeddingReady: modelStatus === 'ready',
+    initialQuery: urlQuery,
+    savedState,
+    initialPrefs: searchPreferences,
+  })
 
-  // Persist a completed answer to route state so it survives navigating to a
-  // document and back. Guarded so restoring an answer doesn't re-navigate.
+  // Persist state to route when generation completes (status: generating → idle with answer)
+  const prevStatusRef = useRef(status)
   useEffect(() => {
-    if (phase !== 'answered' || !answer || !answeredQuery) return
-    if (
-      locationState.savedAi?.query === answeredQuery &&
-      locationState.savedAi?.answer === answer
-    )
-      return
-    navigate(location.pathname + location.search, {
-      replace: true,
-      state: {
-        ...locationState,
-        savedAi: { answer, citations, query: answeredQuery, llmMaxTokens },
-      },
-    })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [phase])
+    const wasGenerating = prevStatusRef.current === 'generating'
+    const isNowIdle = status === 'idle'
+
+    if (wasGenerating && isNowIdle && answer && answeredQuery) {
+      // Check if already persisted
+      const current = locationState.savedSearchState
+      if (current?.ai?.answer === answer && current?.query === answeredQuery) {
+        prevStatusRef.current = status
+        return
+      }
+
+      // Persist complete state
+      const newState: SavedSearchState = {
+        query: answeredQuery,
+        results,
+        focusedChunkId,
+        isAiMode,
+        ai: { answer, citations, llmMaxTokens },
+      }
+
+      navigate(location.pathname + location.search, {
+        replace: true,
+        state: { savedSearchState: newState },
+      })
+    }
+
+    prevStatusRef.current = status
+  }, [
+    status,
+    answer,
+    answeredQuery,
+    results,
+    citations,
+    llmMaxTokens,
+    focusedChunkId,
+    locationState.savedSearchState,
+    navigate,
+    location.pathname,
+    location.search,
+  ])
 
   const handleSearch = (searchQuery: string) => {
     submitQuery(searchQuery)
     setSearchParams(searchQuery.trim() ? { q: searchQuery } : {})
   }
 
-  // Model download progress/errors now live in a toast (not below the search
-  // bar), so this panel only shows the generated answer and generation errors.
+  // Show LLM answer panel
   const showLLMAnswer = isAiMode && (isGenerating || !!answer || !!llmError)
 
-  // Forwarded to ResultCard and LLMAnswer so they can include it in navigation state,
-  // allowing the document viewer to pass it back when the user returns to search.
-  const aiState: SavedAi | undefined =
-    !isGenerating && answer && answeredQuery
-      ? { answer, citations, query: answeredQuery, llmMaxTokens }
+  // Build state to pass when navigating to document viewer
+  const currentSavedState: SavedSearchState | undefined =
+    hasSearched && results.length > 0
+      ? {
+          query: answeredQuery || urlQuery,
+          results,
+          focusedChunkId,
+          isAiMode,
+          ai:
+            !isGenerating && answer && answeredQuery
+              ? { answer, citations, llmMaxTokens }
+              : undefined,
+        }
       : undefined
 
   return (
@@ -148,7 +181,7 @@ export function SearchPage() {
           onSearch={handleSearch}
           isSearching={isSearching}
           modelStatus={modelStatus}
-          initialQuery={initialQuery}
+          initialQuery={urlQuery}
           hybridWeights={hybridWeights}
           onWeightsChange={setHybridWeights}
           maxResults={maxResults}
@@ -181,7 +214,7 @@ export function SearchPage() {
             hasSearched={hasSearched}
             error={error}
             focusedChunkId={focusedChunkId}
-            savedAi={aiState}
+            savedSearchState={currentSavedState}
             citations={isAiMode ? citations : undefined}
           />
         </div>

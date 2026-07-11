@@ -10,6 +10,13 @@ import {
 import type { SearchResult, HybridWeights } from '@/types/search'
 import type { SearchPreferences } from '@/types/library'
 
+/** Optional initial state for restoring from navigation */
+interface SearchInit {
+  query?: string
+  results?: SearchResult[]
+  isAiMode?: boolean
+}
+
 /**
  * Executor hook for hybrid search within a library. It owns the search data and
  * persisted preferences but does NOT decide *when* to search — the caller (the
@@ -19,26 +26,34 @@ import type { SearchPreferences } from '@/types/library'
  * `initialPrefs` are supplied by the route loader, so preference state is seeded
  * synchronously on the first render — no post-mount fetch and no flash of
  * defaults followed by a re-search once saved prefs arrive.
+ *
+ * `init` allows restoring query/results from navigation state without re-searching.
  */
-export function useSearch(libraryId: string, initialPrefs?: SearchPreferences | null) {
-  const [query, setQuery] = useState('')
-  const [results, setResults] = useState<SearchResult[]>([])
+export function useSearch(
+  libraryId: string,
+  initialPrefs?: SearchPreferences | null,
+  init?: SearchInit,
+) {
+  const [query, setQuery] = useState(init?.query ?? '')
+  const [results, setResults] = useState<SearchResult[]>(init?.results ?? [])
   const [isSearching, setIsSearching] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [hasSearched, setHasSearched] = useState(false)
+  const [hasSearched, setHasSearched] = useState(!!init?.results?.length)
   const [hybridWeights, setHybridWeights] = useState<HybridWeights>(
     initialPrefs?.hybridWeights ?? DEFAULT_HYBRID_WEIGHTS,
   )
   const [maxResults, setMaxResults] = useState(initialPrefs?.maxResults ?? DEFAULT_MAX_RESULTS)
   const [minScore, setMinScore] = useState(initialPrefs?.minScore ?? DEFAULT_MIN_SCORE)
   const [llmMaxTokens, setLlmMaxTokens] = useState(initialPrefs?.llmMaxTokens ?? LLM_MAX_TOKENS)
+  const [isAiMode, setIsAiMode] = useState(init?.isAiMode ?? initialPrefs?.isAiMode ?? false)
   const abortRef = useRef(0)
   // Always-current snapshot of prefs used by wrapped setters to avoid stale closures
-  const prefsRef = useRef({ hybridWeights, maxResults, minScore, llmMaxTokens })
-  prefsRef.current = { hybridWeights, maxResults, minScore, llmMaxTokens }
+  const prefsRef = useRef({ hybridWeights, maxResults, minScore, llmMaxTokens, isAiMode })
+  prefsRef.current = { hybridWeights, maxResults, minScore, llmMaxTokens, isAiMode }
 
   // Returns the results it produced so the orchestrator can react without waiting
   // for a re-render. Empty query / stale run / error all resolve to [].
+  // Reads from prefsRef to always use fresh preference values.
   const performSearch = useCallback(
     async (searchQuery: string): Promise<SearchResult[]> => {
       const trimmed = searchQuery.trim()
@@ -55,13 +70,16 @@ export function useSearch(libraryId: string, initialPrefs?: SearchPreferences | 
       setIsSearching(true)
       setError(null)
 
+      // Read fresh prefs from ref to avoid stale closure values
+      const { maxResults: max, hybridWeights: weights, minScore: min } = prefsRef.current
+
       try {
         const searchResults = await searchService(
           trimmed,
           libraryId,
-          maxResults,
-          hybridWeights,
-          minScore,
+          max,
+          weights,
+          min,
         )
         if (searchId !== abortRef.current) return []
         setResults(searchResults)
@@ -80,7 +98,7 @@ export function useSearch(libraryId: string, initialPrefs?: SearchPreferences | 
         }
       }
     },
-    [libraryId, hybridWeights, maxResults, minScore],
+    [libraryId],
   )
 
   const clearResults = useCallback(() => {
@@ -135,6 +153,17 @@ export function useSearch(libraryId: string, initialPrefs?: SearchPreferences | 
     [libraryId],
   )
 
+  const handleSetIsAiMode = useCallback(
+    (enabled: boolean) => {
+      setIsAiMode(enabled)
+      libraryService.updateSearchPreferences(libraryId, {
+        ...prefsRef.current,
+        isAiMode: enabled,
+      })
+    },
+    [libraryId],
+  )
+
   return {
     query,
     results,
@@ -151,5 +180,7 @@ export function useSearch(libraryId: string, initialPrefs?: SearchPreferences | 
     setMinScore: handleSetMinScore,
     llmMaxTokens,
     setLlmMaxTokens: handleSetLlmMaxTokens,
+    isAiMode,
+    setIsAiMode: handleSetIsAiMode,
   }
 }
