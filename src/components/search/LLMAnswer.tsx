@@ -32,7 +32,7 @@ function AnswerText({
                 key={i}
                 type="button"
                 onClick={() => onCitationClick(citation)}
-                className="inline-flex items-center justify-center w-5 h-5 text-xs font-semibold text-foreground bg-muted rounded hover:bg-accent transition-colors align-baseline mx-0.5"
+                className="inline-flex cursor-pointer items-center justify-center w-5 h-5 text-xs font-semibold text-foreground bg-muted rounded hover:bg-accent transition-colors align-baseline mx-0.5"
                 title={citation.documentName}
               >
                 {idx}
