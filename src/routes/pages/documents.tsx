@@ -10,7 +10,7 @@ import { useProcessingCountData } from '@/hooks/data/useProcessingCountData'
 export function DocumentsPage() {
   const { libraryId } = useParams<{ libraryId: string }>()
   const { uploadFiles } = useDocuments(libraryId!)
-  const modelStatus = useAppStore((s) => s.modelStatus)
+  const embeddingStatus = useAppStore((s) => s.embeddingStatus)
   const navigate = useNavigate()
 
   const { count } = useIndexedDocumentCountData(libraryId!)
@@ -33,7 +33,7 @@ export function DocumentsPage() {
         <div className="p-6 min-h-[50vh]">
           <DropZone
             onFiles={(files) => uploadFiles(files)}
-            disabled={modelStatus === 'loading'}
+            disabled={embeddingStatus === 'loading'}
             className="w-full h-full min-h-[calc(50vh-3rem)]"
           />
         </div>

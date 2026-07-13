@@ -14,7 +14,7 @@ interface ModelConfig {
   name: string
   size: string
   selectProgress: (s: AppState) => number
-  selectStatus: (s: AppState) => AppState['modelStatus']
+  selectStatus: (s: AppState) => AppState['embeddingStatus']
 }
 
 const CONFIG: Record<ModelKind, ModelConfig> = {
@@ -31,8 +31,8 @@ const CONFIG: Record<ModelKind, ModelConfig> = {
     doneLabel: 'Embedding model ready',
     name: EMBEDDING_MODEL_DISPLAY_NAME,
     size: EMBEDDING_MODEL_DOWNLOAD_SIZE,
-    selectProgress: (s) => s.modelProgress,
-    selectStatus: (s) => s.modelStatus,
+    selectProgress: (s) => s.embeddingProgress,
+    selectStatus: (s) => s.embeddingStatus,
   },
 }
 

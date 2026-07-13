@@ -3,10 +3,10 @@ import { create } from 'zustand'
 export type ModelStatus = 'idle' | 'loading' | 'ready' | 'error'
 
 export interface AppState {
-  modelStatus: ModelStatus
-  modelProgress: number
-  setModelStatus: (status: ModelStatus) => void
-  setModelProgress: (progress: number) => void
+  embeddingStatus: ModelStatus
+  embeddingProgress: number
+  setEmbeddingStatus: (status: ModelStatus) => void
+  setEmbeddingProgress: (progress: number) => void
   llmStatus: ModelStatus
   llmProgress: number
   setLlmStatus: (status: ModelStatus) => void
@@ -14,10 +14,10 @@ export interface AppState {
 }
 
 export const useAppStore = create<AppState>((set) => ({
-  modelStatus: 'idle',
-  modelProgress: 0,
-  setModelStatus: (status) => set({ modelStatus: status }),
-  setModelProgress: (progress) => set({ modelProgress: progress }),
+  embeddingStatus: 'idle',
+  embeddingProgress: 0,
+  setEmbeddingStatus: (status) => set({ embeddingStatus: status }),
+  setEmbeddingProgress: (progress) => set({ embeddingProgress: progress }),
   llmStatus: 'idle',
   llmProgress: 0,
   setLlmStatus: (status) => set({ llmStatus: status }),

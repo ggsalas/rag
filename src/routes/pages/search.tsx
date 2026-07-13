@@ -57,7 +57,7 @@ export const searchShouldRevalidate: ShouldRevalidateFunction = ({
 export function SearchPage() {
   const { libraryId } = useParams<{ libraryId: string }>()
   const { searchPreferences } = useLoaderData() as SearchLoaderData
-  const modelStatus = useAppStore((s) => s.modelStatus)
+  const embeddingStatus = useAppStore((s) => s.embeddingStatus)
   const [searchParams, setSearchParams] = useSearchParams()
   const location = useLocation()
   const navigate = useNavigate()
@@ -101,7 +101,7 @@ export function SearchPage() {
     acceptModelDownload,
     cancelModelDownload,
   } = useSearchSession(libraryId!, {
-    embeddingReady: modelStatus === 'ready',
+    embeddingReady: embeddingStatus === 'ready',
     initialQuery: urlQuery,
     savedState,
     initialPrefs: searchPreferences,
@@ -180,7 +180,7 @@ export function SearchPage() {
         <SearchBar
           onSearch={handleSearch}
           isSearching={isSearching}
-          modelStatus={modelStatus}
+          embeddingStatus={embeddingStatus}
           initialQuery={urlQuery}
           hybridWeights={hybridWeights}
           onWeightsChange={setHybridWeights}

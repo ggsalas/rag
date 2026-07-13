@@ -3,14 +3,14 @@ import { Toaster } from 'sonner'
 import { router } from '@/routes'
 import { useBeforeUnload } from '@/hooks/useBeforeUnload'
 import { useProcessingDocuments } from '@/hooks/useProcessingDocuments'
-import { useModelStatus } from '@/hooks/useModelStatus'
+import { useEmbeddingStatus } from '@/hooks/useEmbeddingStatus'
 import { useProcessingNotifications } from '@/hooks/useProcessingNotifications'
 import { useInterruptedDocumentsCleanup } from '@/hooks/useInterruptedDocumentsCleanup'
 
 export function App() {
   const hasProcessingDocuments = useProcessingDocuments()
 
-  useModelStatus()
+  useEmbeddingStatus()
   useProcessingNotifications()
   useInterruptedDocumentsCleanup()
   useBeforeUnload(

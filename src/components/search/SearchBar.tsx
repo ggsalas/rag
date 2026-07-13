@@ -13,7 +13,7 @@ import type { HybridWeights } from '@/types/search'
 interface SearchBarProps {
   onSearch: (query: string) => void
   isSearching: boolean
-  modelStatus: ModelStatus
+  embeddingStatus: ModelStatus
   initialQuery?: string
   hybridWeights?: HybridWeights
   onWeightsChange?: (weights: HybridWeights) => void
@@ -30,7 +30,7 @@ interface SearchBarProps {
 
 export function SearchBar({
   onSearch,
-  modelStatus,
+  embeddingStatus,
   initialQuery = '',
   hybridWeights,
   onWeightsChange,
@@ -76,7 +76,7 @@ export function SearchBar({
     onWeightsChange?.({ vector: localWeight, text: 1 - localWeight })
   }
 
-  const isDisabled = modelStatus !== 'ready'
+  const isDisabled = embeddingStatus !== 'ready'
   const hasText = inputValue.trim().length > 0
   const showWeights =
     hybridWeights !== undefined && onWeightsChange !== undefined
@@ -264,13 +264,13 @@ export function SearchBar({
         </div>
       </div>
 
-      {modelStatus === 'loading' && (
+      {embeddingStatus === 'loading' && (
         <p className="mt-2 text-sm text-muted-foreground">
           Loading embedding model... Search will be available once the model is
           ready.
         </p>
       )}
-      {modelStatus === 'error' && (
+      {embeddingStatus === 'error' && (
         <p className="mt-2 text-sm text-foreground">
           Embedding model failed to load. Search is unavailable.
         </p>

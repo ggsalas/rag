@@ -7,7 +7,7 @@ import type {
 } from '@/workers/embedding.worker'
 
 /** Initializes the embedding model in the worker, reporting download progress (0..1) */
-export async function initModel(
+export async function initEmbeddingModel(
   onProgress?: EmbeddingLoadProgressCallback,
 ): Promise<void> {
   const worker = getEmbeddingWorker()
@@ -15,7 +15,7 @@ export async function initModel(
 }
 
 /** Returns the current status of the embedding model */
-export async function getModelStatus(): Promise<EmbeddingModelStatus> {
+export async function getEmbeddingModelStatus(): Promise<EmbeddingModelStatus> {
   const worker = getEmbeddingWorker()
   return worker.getStatus()
 }
