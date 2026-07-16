@@ -15,7 +15,7 @@ import { MainPanel } from '@/components/sidebar/MainPanel'
 import { DocumentViewerHeader } from '@/components/document-viewer/DocumentViewerHeader'
 import { HighlightedText } from '@/components/document-viewer/HighlightedText'
 import type { DocumentContent, DocumentMeta } from '@/types/document'
-import type { SavedSearchState } from '@/hooks/useSearchSession'
+import type { SavedSearchState } from '@/hooks/useSearchStore'
 
 export function DocumentViewerPage() {
   const { libraryId, documentId } = useParams<{

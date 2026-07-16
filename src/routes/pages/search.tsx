@@ -7,14 +7,19 @@ import {
   type LoaderFunctionArgs,
   type ShouldRevalidateFunction,
 } from 'react-router'
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useCallback, useState } from 'react'
+import { useStore } from 'zustand'
 import { useAppStore } from '@/store/app.store'
 import * as libraryService from '@/services/library.service'
 import type { SearchPreferences } from '@/types/library'
 import {
-  useSearchSession,
+  createSearchStore,
+  ensureModelLoaded,
   type SavedSearchState,
-} from '@/hooks/useSearchSession'
+  type SearchStore,
+  type PipelineOptions,
+} from '@/hooks/useSearchStore'
+import { useSearchPreferences } from '@/hooks/useSearchPreferences'
 import { useOramaHydration } from '@/hooks/useOramaHydration'
 import { SearchBar } from '@/components/search/SearchBar'
 import { ResultList } from '@/components/search/ResultList'
@@ -44,10 +49,7 @@ export async function searchLoader({
 
 /**
  * Only revalidate (reload prefs) when the library changes, so same-library
- * navigations stay synchronous. Key case: ResultCard's pre-flight `replace` that
- * stamps `focusedChunkId` before pushing to the doc viewer — if the loader made
- * that replace async, the immediate push would cancel it before it commits, and
- * the chunk wouldn't be highlighted when navigating back.
+ * navigations stay synchronous.
  */
 export const searchShouldRevalidate: ShouldRevalidateFunction = ({
   currentParams,
@@ -73,104 +75,239 @@ export function SearchPage() {
       ? locationState.savedSearchState
       : undefined
 
-  const {
-    status,
-    results,
-    isSearching,
-    isGenerating,
-    error,
-    hasSearched,
-    hybridWeights,
-    setHybridWeights,
-    maxResults,
-    setMaxResults,
-    minScore,
-    setMinScore,
-    llmMaxTokens,
-    setLlmMaxTokens,
-    isAiMode,
-    answer,
-    citations,
-    answeredQuery,
-    llmError,
-    focusedChunkId,
-    setFocusedChunkId,
-    showModelModal,
-    submitQuery,
-    toggleAi,
-    acceptModelDownload,
-    cancelModelDownload,
-  } = useSearchSession(libraryId!, {
-    embeddingReady: embeddingStatus === 'ready',
-    initialQuery: urlQuery,
-    savedState,
-    initialPrefs: searchPreferences,
-  })
+  // --- Store (page-scoped, created once) ---
+  const storeRef = useRef<SearchStore | null>(null)
+  if (!storeRef.current) {
+    storeRef.current = createSearchStore(savedState)
+  }
+  const store = storeRef.current
 
-  // Persist state to route when generation completes (status: generating → idle with answer)
-  const prevStatusRef = useRef(status)
-  useEffect(() => {
-    const wasGenerating = prevStatusRef.current === 'generating'
-    const isNowIdle = status === 'idle'
+  const { status, results, answer, citations, error, llmError, hasSearched } =
+    useStore(store)
 
-    if (wasGenerating && isNowIdle && answer && answeredQuery) {
-      // Check if already persisted
-      const current = locationState.savedSearchState
-      if (current?.ai?.answer === answer && current?.query === answeredQuery) {
-        prevStatusRef.current = status
-        return
-      }
+  // --- Preferences (separate from pipeline state) ---
+  const prefs = useSearchPreferences(libraryId!, searchPreferences)
 
-      // Persist complete state
-      const newState: SavedSearchState = {
-        query: answeredQuery,
-        results,
-        focusedChunkId,
-        isAiMode,
-        ai: { answer, citations, llmMaxTokens },
-      }
+  // --- Local UI state ---
+  const [showModelModal, setShowModelModal] = useState(false)
 
+  // focusedChunkId lives in location.state for back-nav persistence
+  const focusedChunkId = locationState.savedSearchState?.focusedChunkId ?? null
+
+  const setFocusedChunkId = useCallback(
+    (id: string | null) => {
       navigate(location.pathname + location.search, {
         replace: true,
-        state: { savedSearchState: newState },
+        state: {
+          savedSearchState: {
+            ...locationState.savedSearchState,
+            focusedChunkId: id,
+          },
+        },
       })
+    },
+    [
+      navigate,
+      location.pathname,
+      location.search,
+      locationState.savedSearchState,
+    ],
+  )
+
+  // --- Pipeline options (built from current prefs) ---
+  const buildOpts = useCallback(
+    (): PipelineOptions => ({
+      libraryId: libraryId!,
+      isAiMode: prefs.isAiMode,
+      hybridWeights: prefs.hybridWeights,
+      maxResults: prefs.maxResults,
+      minScore: prefs.minScore,
+      llmMaxTokens: prefs.llmMaxTokens,
+    }),
+    [
+      libraryId,
+      prefs.isAiMode,
+      prefs.hybridWeights,
+      prefs.maxResults,
+      prefs.minScore,
+      prefs.llmMaxTokens,
+    ],
+  )
+
+  // --- onSettled: persist complete state to router on pipeline completion ---
+  const onSettled = useCallback(
+    (state: SavedSearchState) => {
+      navigate(location.pathname + '?q=' + encodeURIComponent(state.query), {
+        replace: true,
+        state: { savedSearchState: state },
+      })
+    },
+    [navigate, location.pathname],
+  )
+
+  // --- Bootstrap: auto-search if ?q= exists with no saved state ---
+  const bootstrappedRef = useRef(false)
+  useEffect(() => {
+    if (bootstrappedRef.current) return
+    if (!urlQuery.trim() || savedState) return
+    if (embeddingStatus !== 'ready') return
+
+    bootstrappedRef.current = true
+    store.getState().submitQuery(urlQuery, buildOpts(), onSettled)
+  }, [embeddingStatus, urlQuery, savedState, store, buildOpts, onSettled])
+
+  // --- Cleanup on unmount ---
+  useEffect(
+    () => () => {
+      storeRef.current?.getState().destroy()
+    },
+    [],
+  )
+
+  // --- Preload LLM if AI mode is already enabled ---
+  useEffect(() => {
+    if (!prefs.isAiMode) return
+    if (useAppStore.getState().llmStatus !== 'idle') return
+    ensureModelLoaded(new AbortController().signal)
+  }, [prefs.isAiMode])
+
+  // --- Handlers (event-driven, no effects) ---
+  const handleSearch = useCallback(
+    (query: string) => {
+      const trimmed = query.trim()
+      setSearchParams(trimmed ? { q: query } : {})
+      store.getState().submitQuery(query, buildOpts(), onSettled)
+    },
+    [setSearchParams, store, buildOpts, onSettled],
+  )
+
+  const handleSetHybridWeights = useCallback(
+    (weights: typeof prefs.hybridWeights) => {
+      prefs.setHybridWeights(weights)
+      if (hasSearched && urlQuery.trim()) {
+        store.getState().submitQuery(
+          urlQuery,
+          {
+            ...buildOpts(),
+            hybridWeights: weights,
+          },
+          onSettled,
+        )
+      }
+    },
+    [prefs, hasSearched, urlQuery, store, buildOpts, onSettled],
+  )
+
+  const handleSetMaxResults = useCallback(
+    (n: number) => {
+      prefs.setMaxResults(n)
+      if (hasSearched && urlQuery.trim()) {
+        store.getState().submitQuery(
+          urlQuery,
+          {
+            ...buildOpts(),
+            maxResults: n,
+          },
+          onSettled,
+        )
+      }
+    },
+    [prefs, hasSearched, urlQuery, store, buildOpts, onSettled],
+  )
+
+  const handleSetMinScore = useCallback(
+    (n: number) => {
+      prefs.setMinScore(n)
+      if (hasSearched && urlQuery.trim()) {
+        store.getState().submitQuery(
+          urlQuery,
+          {
+            ...buildOpts(),
+            minScore: n,
+          },
+          onSettled,
+        )
+      }
+    },
+    [prefs, hasSearched, urlQuery, store, buildOpts, onSettled],
+  )
+
+  const handleSetLlmMaxTokens = useCallback(
+    (n: number) => {
+      prefs.setLlmMaxTokens(n)
+      // Token budget change → regenerate AI only (no re-search)
+      if (prefs.isAiMode && results.length > 0 && urlQuery.trim()) {
+        store.getState().regenerateAnswer(
+          urlQuery,
+          results,
+          {
+            ...buildOpts(),
+            llmMaxTokens: n,
+          },
+          onSettled,
+        )
+      }
+    },
+    [prefs, results, urlQuery, store, buildOpts, onSettled],
+  )
+
+  const toggleAi = useCallback(() => {
+    if (prefs.isAiMode) {
+      // Turn off AI
+      prefs.setIsAiMode(false)
+    } else {
+      const llmStatus = useAppStore.getState().llmStatus
+      if (llmStatus === 'ready') {
+        // Turn on AI (model already loaded) — re-search to generate
+        prefs.setIsAiMode(true)
+        if (hasSearched && urlQuery.trim()) {
+          store.getState().submitQuery(
+            urlQuery,
+            {
+              ...buildOpts(),
+              isAiMode: true,
+            },
+            onSettled,
+          )
+        }
+      } else {
+        // Need to download model first — show confirmation modal
+        setShowModelModal(true)
+      }
     }
+  }, [prefs, hasSearched, urlQuery, store, buildOpts, onSettled])
 
-    prevStatusRef.current = status
-  }, [
-    status,
-    answer,
-    answeredQuery,
-    results,
-    citations,
-    llmMaxTokens,
-    focusedChunkId,
-    locationState.savedSearchState,
-    navigate,
-    location.pathname,
-    location.search,
-  ])
+  const acceptModelDownload = useCallback(() => {
+    setShowModelModal(false)
+    prefs.setIsAiMode(true)
+    if (urlQuery.trim()) {
+      store.getState().submitQuery(
+        urlQuery,
+        {
+          ...buildOpts(),
+          isAiMode: true,
+        },
+        onSettled,
+      )
+    }
+  }, [prefs, urlQuery, store, buildOpts, onSettled])
 
-  const handleSearch = (searchQuery: string) => {
-    submitQuery(searchQuery)
-    setSearchParams(searchQuery.trim() ? { q: searchQuery } : {})
-  }
+  const cancelModelDownload = useCallback(() => setShowModelModal(false), [])
 
-  // Show LLM answer panel
-  const showLLMAnswer = isAiMode && (isGenerating || !!answer || !!llmError)
+  // --- Derived state ---
+  const isSearching = status === 'searching'
+  const isGenerating = status === 'generating'
+  const showLLMAnswer =
+    prefs.isAiMode && (isGenerating || !!answer || !!llmError)
 
   // Build state to pass when navigating to document viewer
   const currentSavedState: SavedSearchState | undefined =
     hasSearched && results.length > 0
       ? {
-          query: answeredQuery || urlQuery,
+          query: urlQuery,
           results,
           focusedChunkId,
-          isAiMode,
-          ai:
-            !isGenerating && answer && answeredQuery
-              ? { answer, citations, llmMaxTokens }
-              : undefined,
+          ai: !isGenerating && answer ? { answer, citations } : undefined,
         }
       : undefined
 
@@ -182,17 +319,17 @@ export function SearchPage() {
           isSearching={isSearching}
           embeddingStatus={embeddingStatus}
           initialQuery={urlQuery}
-          hybridWeights={hybridWeights}
-          onWeightsChange={setHybridWeights}
-          maxResults={maxResults}
-          onMaxResultsChange={setMaxResults}
-          minScore={minScore}
-          onMinScoreChange={setMinScore}
+          hybridWeights={prefs.hybridWeights}
+          onWeightsChange={handleSetHybridWeights}
+          maxResults={prefs.maxResults}
+          onMaxResultsChange={handleSetMaxResults}
+          minScore={prefs.minScore}
+          onMinScoreChange={handleSetMinScore}
           notFocused={!!focusedChunkId}
-          isAiMode={isAiMode}
+          isAiMode={prefs.isAiMode}
           onAiModeToggle={toggleAi}
-          llmMaxTokens={llmMaxTokens}
-          onLlmMaxTokensChange={setLlmMaxTokens}
+          llmMaxTokens={prefs.llmMaxTokens}
+          onLlmMaxTokensChange={handleSetLlmMaxTokens}
         />
 
         {showLLMAnswer && (
@@ -215,7 +352,7 @@ export function SearchPage() {
             error={error}
             focusedChunkId={focusedChunkId}
             savedSearchState={currentSavedState}
-            citations={isAiMode ? citations : undefined}
+            citations={prefs.isAiMode ? citations : undefined}
           />
         </div>
       </div>
