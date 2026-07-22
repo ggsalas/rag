@@ -14,7 +14,7 @@ export function DocumentsPage() {
   const navigate = useNavigate()
 
   const { count } = useIndexedDocumentCountData(libraryId!)
-  const processingCount = useProcessingCountData(libraryId)
+  const { count: processingCount } = useProcessingCountData(libraryId)
   const hadProcessingRef = useRef(false)
 
   useEffect(() => {

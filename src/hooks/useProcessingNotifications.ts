@@ -6,7 +6,7 @@ const TOAST_ID = 'processing-queue'
 
 /** Hook that shows toast notifications for document processing queue */
 export function useProcessingNotifications() {
-  const count = useProcessingCountData()
+  const { count } = useProcessingCountData()
   const prevCountRef = useRef(0)
 
   useEffect(() => {
