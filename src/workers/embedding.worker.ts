@@ -12,8 +12,11 @@ export type EmbeddingProgressCallback = (
   total: number,
 ) => void | Promise<void>
 
+/** Reports overall model-download progress as a fraction (0..1). */
+export type EmbeddingLoadProgressCallback = (progress: number) => void
+
 export interface EmbeddingWorkerAPI {
-  loadModel(): Promise<void>
+  loadModel(onProgress?: EmbeddingLoadProgressCallback): Promise<void>
   getStatus(): EmbeddingModelStatus
   generateEmbedding(text: string): Promise<number[]>
   generateEmbeddings(
@@ -25,13 +28,42 @@ export interface EmbeddingWorkerAPI {
 let extractor: FeatureExtractionPipeline | null = null
 let status: EmbeddingModelStatus = 'idle'
 
-/** Loads the embedding model into memory */
-async function loadModel(): Promise<void> {
+/** Loads the embedding model into memory, reporting download progress (0..1). */
+async function loadModel(
+  onProgress?: EmbeddingLoadProgressCallback,
+): Promise<void> {
   if (status === 'ready') return
   status = 'loading'
+  // The model is fetched as several files; aggregate their byte counts so the
+  // reported progress reflects the whole download, not each file in isolation.
+  const files = new Map<string, { loaded: number; total: number }>()
   try {
     extractor = await pipeline('feature-extraction', EMBEDDING_MODEL_NAME, {
       dtype: 'fp32',
+      progress_callback: (report: {
+        status: string
+        file?: string
+        loaded?: number
+        total?: number
+      }) => {
+        if (
+          report.status !== 'progress' ||
+          !report.file ||
+          !report.total
+        )
+          return
+        files.set(report.file, {
+          loaded: report.loaded ?? 0,
+          total: report.total,
+        })
+        let loaded = 0
+        let total = 0
+        for (const f of files.values()) {
+          loaded += f.loaded
+          total += f.total
+        }
+        if (total > 0) onProgress?.(loaded / total)
+      },
     })
     status = 'ready'
   } catch (error) {

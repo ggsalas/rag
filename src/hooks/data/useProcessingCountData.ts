@@ -14,7 +14,10 @@ const PROCESSING_STATUSES: DocumentStatus[] = [
  * Pass a libraryId to scope the count to a specific library.
  * ⚠️ Architecture exception: This hook can import db directly (useLiveQuery requirement).
  */
-export function useProcessingCountData(libraryId?: string): number {
+export function useProcessingCountData(libraryId?: string): {
+  count: number
+  loading: boolean
+} {
   const count = useLiveQuery(
     () =>
       libraryId
@@ -27,5 +30,8 @@ export function useProcessingCountData(libraryId?: string): number {
     [libraryId],
   )
 
-  return count ?? 0
+  return {
+    count: count ?? 0,
+    loading: count === undefined,
+  }
 }

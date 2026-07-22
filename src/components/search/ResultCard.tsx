@@ -1,6 +1,6 @@
 import { useLayoutEffect, useRef } from 'react'
 import type { SearchResult } from '@/types/search'
-import type { SavedAi } from './ResultList'
+import type { SavedSearchState } from '@/types/search'
 import { ScoreBadge } from './ScoreBadge'
 import {
   useParams,
@@ -12,7 +12,7 @@ import {
 interface ResultCardProps {
   result: SearchResult
   isFocused?: boolean
-  savedAi?: SavedAi
+  savedSearchState?: SavedSearchState
   /** undefined = AI mode off · null = AI mode on, not sent · number = sent with this citation index */
   llmCitationIndex?: number | null
 }
@@ -20,7 +20,7 @@ interface ResultCardProps {
 export function ResultCard({
   result,
   isFocused = false,
-  savedAi,
+  savedSearchState,
   llmCitationIndex,
 }: ResultCardProps) {
   const { libraryId } = useParams<{ libraryId: string }>()
@@ -39,15 +39,20 @@ export function ResultCard({
   }, [isFocused])
 
   const handleClick = () => {
+    // Update savedSearchState with the focused chunk before navigating
+    const stateWithFocus: SavedSearchState | undefined = savedSearchState
+      ? { ...savedSearchState, focusedChunkId: result.chunkId }
+      : undefined
+
     // Pre-flight replace: add focusedChunkId to the current search history entry so the
     // browser back button restores the same state as the "Back to search" button.
     navigate(location.pathname + location.search, {
       replace: true,
-      state: { ...location.state, focusedChunkId: result.chunkId },
+      state: { savedSearchState: stateWithFocus },
     })
     navigate(
       `/libraries/${libraryId}/documents/${result.documentId}?chunk=${result.chunkIndex}`,
-      { state: { searchQuery: currentQuery, savedAi } },
+      { state: { savedSearchState: stateWithFocus } },
     )
   }
 

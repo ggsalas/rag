@@ -5,6 +5,6 @@ import { useProcessingCountData } from './data/useProcessingCountData'
  * Returns true if any document has a processing status.
  */
 export function useProcessingDocuments(): boolean {
-  const count = useProcessingCountData()
+  const { count } = useProcessingCountData()
   return count > 0
 }

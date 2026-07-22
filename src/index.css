@@ -9,7 +9,7 @@
  * with neutral shades (foreground / muted) and text.
  */
 @theme {
-  --color-background: #ffffff;
+  --color-background: #fafafa;
   --color-foreground: #111827;
 
   --color-muted: #f3f4f6;
@@ -20,7 +20,7 @@
   --color-ring: #111827;
 
   --color-primary: #111827;
-  --color-primary-foreground: #ffffff;
+  --color-primary-foreground: #fafafa;
   --color-primary-hover: #1f2937;
 
   --color-secondary: #e5e7eb;
@@ -33,24 +33,24 @@
 /* Dark theme — activates automatically with the OS/browser preference. */
 @media (prefers-color-scheme: dark) {
   :root {
-    --color-background: #0a0a0a;
+    --color-background: #141414;
     --color-foreground: #fafafa;
 
-    --color-muted: #1f1f1f;
-    --color-muted-foreground: #a1a1aa;
+    --color-muted: #1c1c1c;
+    --color-muted-foreground: #b4b4bc;
 
-    --color-border: #262626;
-    --color-input: #333333;
+    --color-border: #4b4b4b;
+    --color-input: #454545;
     --color-ring: #fafafa;
 
     --color-primary: #fafafa;
     --color-primary-foreground: #0a0a0a;
     --color-primary-hover: #e5e5e5;
 
-    --color-secondary: #262626;
+    --color-secondary: #2e2e2e;
     --color-secondary-foreground: #fafafa;
 
-    --color-accent: #262626;
+    --color-accent: #2e2e2e;
     --color-accent-foreground: #fafafa;
   }
 }

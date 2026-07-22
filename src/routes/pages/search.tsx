@@ -3,233 +3,308 @@ import {
   useSearchParams,
   useLocation,
   useNavigate,
+  useLoaderData,
+  type LoaderFunctionArgs,
+  type ShouldRevalidateFunction,
 } from 'react-router'
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { toast } from 'sonner'
+import { useEffect, useRef, useCallback, useState } from 'react'
+import { useStore } from 'zustand'
 import { useAppStore } from '@/store/app.store'
-import { useSearch } from '@/hooks/useSearch'
-import { useOramaHydration } from '@/hooks/useOramaHydration'
-import { useLLMAnswer } from '@/hooks/useLLMAnswer'
+import * as libraryService from '@/services/library.service'
+import { ensureIndex } from '@/services/embedding/vector-store'
+import {
+  ensureModelLoaded,
+  type ModelLoadCallbacks,
+} from '@/services/llm/llm.service'
+import type { SearchPreferences } from '@/types/library'
+import type {
+  SavedSearchState,
+  PipelineOptions,
+} from '@/types/search'
+import {
+  createSearchStore,
+  type SearchStore,
+} from '@/hooks/useSearchStore'
+import { useSearchPreferences } from '@/hooks/useSearchPreferences'
 import { SearchBar } from '@/components/search/SearchBar'
 import { ResultList } from '@/components/search/ResultList'
 import { LLMAnswer } from '@/components/search/LLMAnswer'
 import { ModelDownloadModal } from '@/components/search/ModelDownloadModal'
 import { ModelDownloadToast } from '@/components/search/ModelDownloadToast'
 import { MainPanel } from '@/components/sidebar/MainPanel'
-import type { LLMCitation } from '@/services/llm/llm.service'
-import { LLM_CONTEXT_CHUNKS } from '@/lib/constants'
-import type { SearchResult } from '@/types/search'
+import { toast } from 'sonner'
 
-/** Stable id so the loading toast and its success/error transition target the same toast. */
+/** Stable id so the progress toast and its success/error transition target the same toast. */
 const LLM_DOWNLOAD_TOAST_ID = 'llm-model-download'
 
-/** Returns a stable string key representing which doc+chunk pairs are in a context window */
-function chunkContextKey(
-  items: Array<Pick<SearchResult | LLMCitation, 'documentId' | 'chunkId'>>,
-): string {
-  return items.map((i) => `${i.documentId}:${i.chunkId}`).join(',')
-}
-
-interface SavedAi {
-  answer: string
-  citations: LLMCitation[]
-  query: string
-  llmMaxTokens: number
+/** Creates model load callbacks for LLM service */
+function getLlmModelCallbacks(): ModelLoadCallbacks {
+  return {
+    getStatus: () => useAppStore.getState().llmStatus,
+    setStatus: (s) => useAppStore.getState().setLlmStatus(s as any),
+    setProgress: (p) => useAppStore.getState().setLlmProgress(p),
+    subscribe: (listener) => useAppStore.subscribe((state) => listener(state.llmStatus)),
+    showToast: () => toast(<ModelDownloadToast model="llm" />, { id: LLM_DOWNLOAD_TOAST_ID, duration: Infinity }),
+    dismissToast: () => toast.dismiss(LLM_DOWNLOAD_TOAST_ID),
+    showErrorToast: (msg) => toast.error(msg, { id: LLM_DOWNLOAD_TOAST_ID, duration: 6000 }),
+  }
 }
 
 interface LocationState {
-  searchQuery?: string
-  focusedChunkId?: string | null
-  savedAi?: SavedAi
+  savedSearchState?: SavedSearchState
 }
 
+interface SearchLoaderData {
+  searchPreferences: SearchPreferences | null
+}
+
+/**
+ * Prepares the search page before rendering:
+ * - Ensures the Orama vector index is hydrated for the library.
+ * - Loads persisted search preferences so hooks seed state synchronously.
+ * React Router re-runs this whenever :libraryId changes.
+ */
+export async function searchLoader({
+  params,
+}: LoaderFunctionArgs): Promise<SearchLoaderData> {
+  await ensureIndex(params.libraryId!)
+
+  const library = await libraryService.getLibraryById(params.libraryId!)
+
+  return { searchPreferences: library?.searchPreferences ?? null }
+}
+
+/** Only revalidate route when library changes. Same-library navigations stay synchronous. */
+export const searchShouldRevalidate: ShouldRevalidateFunction = ({
+  currentParams,
+  nextParams,
+}) => currentParams.libraryId !== nextParams.libraryId
+
 export function SearchPage() {
+  // -- Pipeline overview --
+  // ?q= → submitQuery → vector search → optionally LLM streaming → idle
+  // On completion, state is saved to location.state for back-nav restoration.
+
+  // -- Route state (URL + navigation history) --
   const { libraryId } = useParams<{ libraryId: string }>()
-  const modelStatus = useAppStore((s) => s.modelStatus)
   const [searchParams, setSearchParams] = useSearchParams()
   const location = useLocation()
   const navigate = useNavigate()
-
-  useOramaHydration(libraryId)
-
+  const { searchPreferences } = useLoaderData() as SearchLoaderData
   const locationState = (location.state ?? {}) as LocationState
-  const stateQuery = locationState.searchQuery
-  const initialQuery = searchParams.get('q') || stateQuery || ''
-  const [focusedChunkId, setFocusedChunkId] = useState(
-    locationState.focusedChunkId ?? null,
-  )
-
-  const {
-    query,
-    results,
-    isSearching,
-    error,
-    hasSearched,
-    search: performSearch,
-    hybridWeights,
-    setHybridWeights,
-    maxResults,
-    setMaxResults,
-    minScore,
-    setMinScore,
-    llmMaxTokens,
-    setLlmMaxTokens,
-  } = useSearch(libraryId!, modelStatus === 'ready' ? initialQuery : '')
-
-  // Restore AI answer from route state if the query matches
-  const savedAi =
-    locationState.savedAi?.query === initialQuery
-      ? locationState.savedAi
+  const urlQuery = searchParams.get('q') || ''
+  // Restore state from navigation if query matches
+  const savedState =
+    locationState.savedSearchState?.query === urlQuery
+      ? locationState.savedSearchState
       : undefined
+  const focusedChunkId = locationState.savedSearchState?.focusedChunkId ?? null
 
-  const {
-    isAiMode,
-    toggleAiMode,
-    answer,
-    citations,
-    answeredQuery,
-    isGenerating,
-    llmStatus,
-    llmError,
-    loadError,
-    generate,
-    clear: clearAnswer,
-    loadModel: loadLLM,
-  } = useLLMAnswer(
-    savedAi
-      ? {
-          answer: savedAi.answer,
-          citations: savedAi.citations,
-          answeredQuery: savedAi.query,
-        }
-      : {},
-  )
+  // -- Search pipeline state (page-scoped Zustand store) --
+  // Zustand's createStore (not a global singleton) gives us get() for stale-free
+  // reads in async pipelines and selective subscriptions for streaming re-renders.
+  const storeRef = useRef<SearchStore | null>(null)
+  if (!storeRef.current) {
+    storeRef.current = createSearchStore(savedState, getLlmModelCallbacks())
+  }
+  const store = storeRef.current
 
+  const { status, results, answer, citations, error, llmError, hasSearched } =
+    useStore(store)
+
+  // -- Preferences (persisted per-library in IndexedDB) --
+  const prefs = useSearchPreferences(libraryId!, searchPreferences)
+
+  // -- Global app state --
+  const embeddingStatus = useAppStore((s) => s.embeddingStatus)
+
+  // -- Local UI state --
   const [showModelModal, setShowModelModal] = useState(false)
-  // Non-null while a download toast is active — gates the finalize effect below.
-  const downloadToastActiveRef = useRef(false)
 
-  // Shows the live download-progress toast (idempotent via the fixed id). Its
-  // content subscribes to the store, so it updates itself as the model downloads.
-  const showDownloadToast = useCallback(() => {
-    if (downloadToastActiveRef.current) return
-    downloadToastActiveRef.current = true
-    toast(<ModelDownloadToast />, {
-      id: LLM_DOWNLOAD_TOAST_ID,
-      duration: Infinity,
-    })
-  }, [])
-
-  // Finalize the download toast once the model finishes loading or fails.
-  useEffect(() => {
-    if (!downloadToastActiveRef.current) return
-    if (llmStatus === 'ready') {
-      // Keep the SAME toast (it now shows 100% / "AI model ready") and just
-      // dismiss it after a moment — swapping in a separate success toast reads
-      // as confusing.
-      downloadToastActiveRef.current = false
-      setTimeout(() => toast.dismiss(LLM_DOWNLOAD_TOAST_ID), 2000)
-    } else if (llmStatus === 'error') {
-      toast.error(loadError ?? 'Failed to download the AI model', {
-        id: LLM_DOWNLOAD_TOAST_ID,
-        duration: 6000,
-      })
-      downloadToastActiveRef.current = false
-    }
-  }, [llmStatus, loadError])
-
-  // AI toggle: enabling for the first time needs a model download, so we confirm
-  // via a modal first. Turning it off (or when already downloaded) is immediate.
-  const handleAiToggle = useCallback(() => {
-    if (isAiMode || llmStatus === 'ready') {
-      toggleAiMode()
-      return
-    }
-    setShowModelModal(true)
-  }, [isAiMode, llmStatus, toggleAiMode])
-
-  const handleAcceptDownload = useCallback(() => {
-    setShowModelModal(false)
-    showDownloadToast()
-    toggleAiMode()
-  }, [showDownloadToast, toggleAiMode])
-
-  // Persist completed answer to route state so it survives navigation to documents and back
-  useEffect(() => {
-    if (isGenerating || !answer || !answeredQuery) return
-    // Skip if already saved (avoids redundant navigate on mount with restored state)
-    if (
-      locationState.savedAi?.query === answeredQuery &&
-      locationState.savedAi?.answer === answer
-    )
-      return
-    navigate(location.pathname + location.search, {
-      replace: true,
-      state: {
-        ...locationState,
-        savedAi: { answer, citations, query: answeredQuery, llmMaxTokens },
-      },
-    })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isGenerating])
-
-  // Tracks the signature (doc+chunk keys + maxTokens) last sent to the LLM. Initialized from
-  // savedAi so navigating back with same context skips re-gen — uses the maxTokens the answer
-  // was generated with, not the current state (which may not have loaded from prefs yet).
-  const prevContextSigRef = useRef<string>(
-    savedAi ? `${chunkContextKey(savedAi.citations)}|${savedAi.llmMaxTokens}` : '',
-  )
-
-  // Trigger generation after search completes when AI mode is active
-  useEffect(() => {
-    if (!isAiMode) {
-      clearAnswer()
-      return
-    }
-    if (llmStatus === 'idle') {
-      showDownloadToast()
-      loadLLM()
-      return
-    }
-    if (llmStatus !== 'ready') return
-    if (!hasSearched) {
-      if (!query.trim()) clearAnswer()
-      return
-    }
-    const contextSig = `${chunkContextKey(results.slice(0, LLM_CONTEXT_CHUNKS))}|${llmMaxTokens}`
-    // Skip only when query AND chunks AND maxTokens are identical (e.g. restored from nav state).
-    // A config change produces different chunks or different maxTokens → regenerate.
-    if (
-      answer &&
-      answeredQuery === query &&
-      contextSig === prevContextSigRef.current
-    )
-      return
-    prevContextSigRef.current = contextSig
-    if (results.length > 0) generate(query, results, llmMaxTokens)
-    else clearAnswer()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [results, isAiMode, llmStatus, hasSearched, query, llmMaxTokens])
-
-  const handleSearch = (searchQuery: string) => {
-    setFocusedChunkId(null)
-    performSearch(searchQuery)
-    if (searchQuery.trim()) {
-      setSearchParams({ q: searchQuery })
-    } else {
-      setSearchParams({})
-    }
+  // ─── Pipeline helpers ───
+  const pipelineOpts: PipelineOptions = {
+    libraryId: libraryId!,
+    isAiMode: prefs.isAiMode,
+    hybridWeights: prefs.hybridWeights,
+    maxResults: prefs.maxResults,
+    minScore: prefs.minScore,
+    llmMaxTokens: prefs.llmMaxTokens,
   }
 
-  // Model download progress/errors now live in a toast (not below the search
-  // bar), so this panel only shows the generated answer and generation errors.
-  const showLLMAnswer = isAiMode && (isGenerating || !!answer || !!llmError)
+  const onSettled = useCallback(
+    (state: SavedSearchState) => {
+      navigate(location.pathname + '?q=' + encodeURIComponent(state.query), {
+        replace: true,
+        state: { savedSearchState: state },
+      })
+    },
+    [navigate, location.pathname],
+  )
 
-  // Forwarded to ResultCard and LLMAnswer so they can include it in navigation state,
-  // allowing the document viewer to pass it back when the user returns to search.
-  const aiState: SavedAi | undefined =
-    !isGenerating && answer && answeredQuery
-      ? { answer, citations, query: answeredQuery, llmMaxTokens }
+  /** Re-runs the current query with overridden pipeline options */
+  const reSearchWithOverride = useCallback(
+    (overrides: Partial<PipelineOptions>) => {
+      if (hasSearched && urlQuery.trim()) {
+        store
+          .getState()
+          .submitQuery(urlQuery, { ...pipelineOpts, ...overrides }, onSettled)
+      }
+    },
+    [hasSearched, urlQuery, store, pipelineOpts, onSettled],
+  )
+
+  // -- Handlers --
+  const handleSearch = useCallback(
+    (query: string) => {
+      const trimmed = query.trim()
+      setSearchParams(trimmed ? { q: query } : {})
+      store.getState().submitQuery(query, pipelineOpts, onSettled)
+    },
+    [setSearchParams, store, pipelineOpts, onSettled],
+  )
+
+  const setFocusedChunkId = useCallback(
+    (id: string | null) => {
+      navigate(location.pathname + location.search, {
+        replace: true,
+        state: {
+          savedSearchState: {
+            ...locationState.savedSearchState,
+            focusedChunkId: id,
+          },
+        },
+      })
+    },
+    [
+      navigate,
+      location.pathname,
+      location.search,
+      locationState.savedSearchState,
+    ],
+  )
+
+  // Pref changes: update local + persist to IndexedDB, re-search if active query
+  const handleSetHybridWeights = useCallback(
+    (weights: typeof prefs.hybridWeights) => {
+      prefs.setHybridWeights(weights)
+      reSearchWithOverride({ hybridWeights: weights })
+    },
+    [prefs, reSearchWithOverride],
+  )
+
+  const handleSetMaxResults = useCallback(
+    (n: number) => {
+      prefs.setMaxResults(n)
+      reSearchWithOverride({ maxResults: n })
+    },
+    [prefs, reSearchWithOverride],
+  )
+
+  const handleSetMinScore = useCallback(
+    (n: number) => {
+      prefs.setMinScore(n)
+      reSearchWithOverride({ minScore: n })
+    },
+    [prefs, reSearchWithOverride],
+  )
+
+  // Token budget → regenerate AI answer only (no re-search)
+  const handleSetLlmMaxTokens = useCallback(
+    (n: number) => {
+      prefs.setLlmMaxTokens(n)
+      // Token budget change → regenerate AI only (no re-search)
+      if (prefs.isAiMode && results.length > 0 && urlQuery.trim()) {
+        store.getState().regenerateAnswer(
+          urlQuery,
+          results,
+          {
+            ...pipelineOpts,
+            llmMaxTokens: n,
+          },
+          onSettled,
+        )
+      }
+    },
+    [prefs, results, urlQuery, store, pipelineOpts, onSettled],
+  )
+
+  // -- AI toggle + model download --
+  const toggleAi = useCallback(() => {
+    if (prefs.isAiMode) {
+      // Turn off AI
+      prefs.setIsAiMode(false)
+    } else {
+      const llmStatus = useAppStore.getState().llmStatus
+      if (llmStatus === 'ready') {
+        // Turn on AI (model already loaded) — re-search to generate
+        prefs.setIsAiMode(true)
+        reSearchWithOverride({ isAiMode: true })
+      } else {
+        // Need to download model first — show confirmation modal
+        setShowModelModal(true)
+      }
+    }
+  }, [prefs, reSearchWithOverride])
+
+  const acceptModelDownload = useCallback(() => {
+    setShowModelModal(false)
+    prefs.setIsAiMode(true)
+    if (urlQuery.trim()) {
+      store.getState().submitQuery(
+        urlQuery,
+        {
+          ...pipelineOpts,
+          isAiMode: true,
+        },
+        onSettled,
+      )
+    }
+  }, [prefs, urlQuery, store, pipelineOpts, onSettled])
+
+  const cancelModelDownload = useCallback(() => setShowModelModal(false), [])
+
+  // -- Effects --
+  // Bootstrap: auto-search if ?q= exists with no saved state
+  const bootstrappedRef = useRef(false)
+  useEffect(() => {
+    if (bootstrappedRef.current) return
+    if (!urlQuery.trim() || savedState) return
+    if (embeddingStatus !== 'ready') return
+
+    bootstrappedRef.current = true
+    store.getState().submitQuery(urlQuery, pipelineOpts, onSettled)
+  }, [embeddingStatus, urlQuery, savedState, store, pipelineOpts, onSettled])
+
+  // Cleanup on unmount
+  useEffect(
+    () => () => {
+      storeRef.current?.getState().destroy()
+    },
+    [],
+  )
+
+  // Preload LLM if AI mode is already enabled
+  useEffect(() => {
+    if (!prefs.isAiMode) return
+    if (useAppStore.getState().llmStatus !== 'idle') return
+    ensureModelLoaded(new AbortController().signal, getLlmModelCallbacks())
+  }, [prefs.isAiMode])
+
+  // -- Derived (render-only) --
+  const isSearching = status === 'searching'
+  const isGenerating = status === 'generating'
+  const showLLMAnswer =
+    prefs.isAiMode && (isGenerating || !!answer || !!llmError)
+
+  // Build state to pass when navigating to document viewer
+  const currentSavedState: SavedSearchState | undefined =
+    hasSearched && results.length > 0
+      ? {
+          query: urlQuery,
+          results,
+          focusedChunkId,
+          ai: !isGenerating && answer ? { answer, citations } : undefined,
+        }
       : undefined
 
   return (
@@ -238,19 +313,19 @@ export function SearchPage() {
         <SearchBar
           onSearch={handleSearch}
           isSearching={isSearching}
-          modelStatus={modelStatus}
-          initialQuery={initialQuery}
-          hybridWeights={hybridWeights}
-          onWeightsChange={(w) => { setFocusedChunkId(null); setHybridWeights(w) }}
-          maxResults={maxResults}
-          onMaxResultsChange={(n) => { setFocusedChunkId(null); setMaxResults(n) }}
-          minScore={minScore}
-          onMinScoreChange={(n) => { setFocusedChunkId(null); setMinScore(n) }}
+          embeddingStatus={embeddingStatus}
+          initialQuery={urlQuery}
+          hybridWeights={prefs.hybridWeights}
+          onWeightsChange={handleSetHybridWeights}
+          maxResults={prefs.maxResults}
+          onMaxResultsChange={handleSetMaxResults}
+          minScore={prefs.minScore}
+          onMinScoreChange={handleSetMinScore}
           notFocused={!!focusedChunkId}
-          isAiMode={isAiMode}
-          onAiModeToggle={handleAiToggle}
-          llmMaxTokens={llmMaxTokens}
-          onLlmMaxTokensChange={(n) => { setFocusedChunkId(null); setLlmMaxTokens(n) }}
+          isAiMode={prefs.isAiMode}
+          onAiModeToggle={toggleAi}
+          llmMaxTokens={prefs.llmMaxTokens}
+          onLlmMaxTokensChange={handleSetLlmMaxTokens}
         />
 
         {showLLMAnswer && (
@@ -272,16 +347,16 @@ export function SearchPage() {
             hasSearched={hasSearched}
             error={error}
             focusedChunkId={focusedChunkId}
-            savedAi={aiState}
-            citations={isAiMode ? citations : undefined}
+            savedSearchState={currentSavedState}
+            citations={prefs.isAiMode ? citations : undefined}
           />
         </div>
       </div>
 
       <ModelDownloadModal
         open={showModelModal}
-        onAccept={handleAcceptDownload}
-        onCancel={() => setShowModelModal(false)}
+        onAccept={acceptModelDownload}
+        onCancel={cancelModelDownload}
       />
     </MainPanel>
   )

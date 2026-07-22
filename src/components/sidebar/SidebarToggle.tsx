@@ -1,4 +1,4 @@
-import { Menu, ArrowLeft } from 'lucide-react'
+import { PanelLeft, PanelLeftClose } from 'lucide-react'
 import { useSidebarStore } from '@/store/sidebar.store'
 
 /**
@@ -23,9 +23,9 @@ export function SidebarToggle() {
     >
       <span className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-background text-foreground transition-colors hover:bg-accent">
         {isOpen ? (
-          <ArrowLeft className="h-5 w-5" />
+          <PanelLeftClose className="h-5 w-5" />
         ) : (
-          <Menu className="h-5 w-5" />
+          <PanelLeft className="h-5 w-5" />
         )}
       </span>
     </button>

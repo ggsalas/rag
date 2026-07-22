@@ -2,7 +2,11 @@ import { createBrowserRouter, Navigate } from 'react-router'
 import { SidebarLayout } from '@/routes/layouts/sidebar-layout'
 import { LibraryRedirect } from '@/routes/pages/library-redirect'
 import { DocumentsPage } from '@/routes/pages/documents'
-import { SearchPage } from '@/routes/pages/search'
+import {
+  SearchPage,
+  searchLoader,
+  searchShouldRevalidate,
+} from '@/routes/pages/search'
 import { DocumentViewerPage } from '@/routes/pages/document-viewer'
 
 export const router = createBrowserRouter(
@@ -33,6 +37,8 @@ export const router = createBrowserRouter(
         },
         {
           path: 'libraries/:libraryId/search',
+          loader: searchLoader,
+          shouldRevalidate: searchShouldRevalidate,
           element: <SearchPage />,
         },
       ],

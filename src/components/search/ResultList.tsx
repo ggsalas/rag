@@ -1,14 +1,8 @@
 import type { SearchResult } from '@/types/search'
 import type { LLMCitation } from '@/services/llm/llm.service'
+import type { SavedSearchState } from '@/types/search'
 import { ResultCard } from './ResultCard'
 import { EmptyState } from '@/components/ui/EmptyState'
-
-export interface SavedAi {
-  answer: string
-  citations: LLMCitation[]
-  query: string
-  llmMaxTokens: number
-}
 
 interface ResultListProps {
   results: SearchResult[]
@@ -16,7 +10,7 @@ interface ResultListProps {
   hasSearched: boolean
   error: string | null
   focusedChunkId?: string | null
-  savedAi?: SavedAi
+  savedSearchState?: SavedSearchState
   citations?: LLMCitation[]
 }
 
@@ -26,7 +20,7 @@ export function ResultList({
   hasSearched,
   error,
   focusedChunkId,
-  savedAi,
+  savedSearchState,
   citations,
 }: ResultListProps) {
   // Error state
@@ -146,7 +140,7 @@ export function ResultList({
           key={result.chunkId}
           result={result}
           isFocused={result.chunkId === focusedChunkId}
-          savedAi={savedAi}
+          savedSearchState={savedSearchState}
           llmCitationIndex={
             citations
               ? (citations.find((c) => c.chunkId === result.chunkId)?.index ??

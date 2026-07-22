@@ -132,3 +132,75 @@ export async function generateAnswer(
 
   return citations
 }
+
+/** Options for managing model loading UI and state */
+export interface ModelLoadCallbacks {
+  getStatus: () => string
+  setStatus: (status: string) => void
+  setProgress: (progress: number) => void
+  subscribe: (listener: (status: string) => void) => () => void
+  showToast?: () => void
+  dismissToast?: () => void
+  showErrorToast?: (message: string) => void
+}
+
+/**
+ * Loads the LLM model if not already ready.
+ * Returns true if the model is ready after the call. Respects abort signal.
+ */
+export async function ensureModelLoaded(
+  signal: AbortSignal,
+  callbacks: ModelLoadCallbacks,
+): Promise<boolean> {
+  const status = callbacks.getStatus()
+  if (status === 'ready') return true
+  if (status === 'loading') {
+    return waitForModelReady(signal, callbacks)
+  }
+
+  callbacks.setStatus('loading')
+  callbacks.setProgress(0)
+  callbacks.showToast?.()
+
+  try {
+    await initLLMModel((progress) => {
+      if (signal.aborted) return
+      callbacks.setProgress(Math.round(progress * 100))
+    })
+    if (signal.aborted) return false
+    callbacks.setStatus('ready')
+    setTimeout(() => callbacks.dismissToast?.(), 2000)
+    return true
+  } catch (err) {
+    if (signal.aborted) return false
+    const message = err instanceof Error ? err.message : 'Failed to load AI model'
+    callbacks.setStatus('error')
+    callbacks.showErrorToast?.(message)
+    return false
+  }
+}
+
+/** Waits for LLM status to leave 'loading' state. Resolves true if ready, false otherwise. */
+function waitForModelReady(
+  signal: AbortSignal,
+  callbacks: ModelLoadCallbacks,
+): Promise<boolean> {
+  return new Promise((resolve) => {
+    if (signal.aborted) { resolve(false); return }
+
+    const unsub = callbacks.subscribe((status) => {
+      if (status === 'ready') {
+        unsub()
+        resolve(true)
+      } else if (status === 'error' || status === 'idle') {
+        unsub()
+        resolve(false)
+      }
+    })
+
+    signal.addEventListener('abort', () => {
+      unsub()
+      resolve(false)
+    }, { once: true })
+  })
+}

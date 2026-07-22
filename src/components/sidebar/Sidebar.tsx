@@ -2,16 +2,16 @@ import { useState } from 'react'
 import { Plus } from 'lucide-react'
 import { useNavigate, useParams } from 'react-router'
 import { useLibrariesData } from '@/hooks/data/useLibrariesData'
-import { useDocumentActions } from '@/hooks/useDocumentActions'
+import { useDocuments } from '@/hooks/useDocuments'
 import { Button } from '@/components/ui/Button'
 import { CreateLibraryForm } from './CreateLibraryForm'
 import { LibraryAccordionItem } from './LibraryAccordionItem'
 
 export function Sidebar() {
   const { libraries, loading } = useLibrariesData()
-  const { deleteDocument } = useDocumentActions()
   const navigate = useNavigate()
   const { libraryId: currentLibraryId } = useParams<{ libraryId: string }>()
+  const { deleteDocument } = useDocuments(currentLibraryId ?? '')
   const [showCreateForm, setShowCreateForm] = useState(false)
   const [expandedLibraryId, setExpandedLibraryId] = useState<string | null>(
     currentLibraryId ?? null,

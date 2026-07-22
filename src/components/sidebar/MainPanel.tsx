@@ -19,7 +19,7 @@ interface MainPanelProps {
  */
 export function MainPanel({ children, noAddDocment }: MainPanelProps) {
   const { libraryId } = useParams<{ libraryId: string }>()
-  const library = useLibraryData(libraryId)
+  const { library } = useLibraryData(libraryId)
   const { deleteLibrary, renameLibrary } = useLibraryActions()
   const navigate = useNavigate()
   const [isEditing, setIsEditing] = useState(false)

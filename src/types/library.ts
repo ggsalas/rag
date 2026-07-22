@@ -5,6 +5,7 @@ export type SearchPreferences = {
   maxResults: number
   minScore: number
   llmMaxTokens?: number
+  isAiMode?: boolean
 }
 
 export type Library = {
