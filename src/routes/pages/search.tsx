@@ -11,6 +11,7 @@ import { useEffect, useRef, useCallback, useState } from 'react'
 import { useStore } from 'zustand'
 import { useAppStore } from '@/store/app.store'
 import * as libraryService from '@/services/library.service'
+import { ensureIndex } from '@/services/embedding/vector-store'
 import type { SearchPreferences } from '@/types/library'
 import {
   createSearchStore,
@@ -20,7 +21,6 @@ import {
   type PipelineOptions,
 } from '@/hooks/useSearchStore'
 import { useSearchPreferences } from '@/hooks/useSearchPreferences'
-import { useOramaHydration } from '@/hooks/useOramaHydration'
 import { SearchBar } from '@/components/search/SearchBar'
 import { ResultList } from '@/components/search/ResultList'
 import { LLMAnswer } from '@/components/search/LLMAnswer'
@@ -36,46 +36,50 @@ interface SearchLoaderData {
 }
 
 /**
- * Loads persisted search preferences before the page renders, so the search
- * hooks can seed their state synchronously — no post-mount fetch and no flash
- * of defaults. React Router re-runs this whenever :libraryId changes.
+ * Prepares the search page before rendering:
+ * - Ensures the Orama vector index is hydrated for the library.
+ * - Loads persisted search preferences so hooks seed state synchronously.
+ * React Router re-runs this whenever :libraryId changes.
  */
 export async function searchLoader({
   params,
 }: LoaderFunctionArgs): Promise<SearchLoaderData> {
+  await ensureIndex(params.libraryId!)
+
   const library = await libraryService.getLibraryById(params.libraryId!)
+
   return { searchPreferences: library?.searchPreferences ?? null }
 }
 
-/**
- * Only revalidate (reload prefs) when the library changes, so same-library
- * navigations stay synchronous.
- */
+/** Only revalidate route when library changes. Same-library navigations stay synchronous. */
 export const searchShouldRevalidate: ShouldRevalidateFunction = ({
   currentParams,
   nextParams,
 }) => currentParams.libraryId !== nextParams.libraryId
 
 export function SearchPage() {
+  // -- Pipeline overview --
+  // ?q= → submitQuery → vector search → optionally LLM streaming → idle
+  // On completion, state is saved to location.state for back-nav restoration.
+
+  // -- Route state (URL + navigation history) --
   const { libraryId } = useParams<{ libraryId: string }>()
-  const { searchPreferences } = useLoaderData() as SearchLoaderData
-  const embeddingStatus = useAppStore((s) => s.embeddingStatus)
   const [searchParams, setSearchParams] = useSearchParams()
   const location = useLocation()
   const navigate = useNavigate()
-
-  useOramaHydration(libraryId)
-
+  const { searchPreferences } = useLoaderData() as SearchLoaderData
   const locationState = (location.state ?? {}) as LocationState
   const urlQuery = searchParams.get('q') || ''
-
   // Restore state from navigation if query matches
   const savedState =
     locationState.savedSearchState?.query === urlQuery
       ? locationState.savedSearchState
       : undefined
+  const focusedChunkId = locationState.savedSearchState?.focusedChunkId ?? null
 
-  // --- Store (page-scoped, created once) ---
+  // -- Search pipeline state (page-scoped Zustand store) --
+  // Zustand's createStore (not a global singleton) gives us get() for stale-free
+  // reads in async pipelines and selective subscriptions for streaming re-renders.
   const storeRef = useRef<SearchStore | null>(null)
   if (!storeRef.current) {
     storeRef.current = createSearchStore(savedState)
@@ -85,14 +89,56 @@ export function SearchPage() {
   const { status, results, answer, citations, error, llmError, hasSearched } =
     useStore(store)
 
-  // --- Preferences (separate from pipeline state) ---
+  // -- Preferences (persisted per-library in IndexedDB) --
   const prefs = useSearchPreferences(libraryId!, searchPreferences)
 
-  // --- Local UI state ---
+  // -- Global app state --
+  const embeddingStatus = useAppStore((s) => s.embeddingStatus)
+
+  // -- Local UI state --
   const [showModelModal, setShowModelModal] = useState(false)
 
-  // focusedChunkId lives in location.state for back-nav persistence
-  const focusedChunkId = locationState.savedSearchState?.focusedChunkId ?? null
+  // ─── Pipeline helpers ───
+  const pipelineOpts: PipelineOptions = {
+    libraryId: libraryId!,
+    isAiMode: prefs.isAiMode,
+    hybridWeights: prefs.hybridWeights,
+    maxResults: prefs.maxResults,
+    minScore: prefs.minScore,
+    llmMaxTokens: prefs.llmMaxTokens,
+  }
+
+  const onSettled = useCallback(
+    (state: SavedSearchState) => {
+      navigate(location.pathname + '?q=' + encodeURIComponent(state.query), {
+        replace: true,
+        state: { savedSearchState: state },
+      })
+    },
+    [navigate, location.pathname],
+  )
+
+  /** Re-runs the current query with overridden pipeline options */
+  const reSearchWithOverride = useCallback(
+    (overrides: Partial<PipelineOptions>) => {
+      if (hasSearched && urlQuery.trim()) {
+        store
+          .getState()
+          .submitQuery(urlQuery, { ...pipelineOpts, ...overrides }, onSettled)
+      }
+    },
+    [hasSearched, urlQuery, store, pipelineOpts, onSettled],
+  )
+
+  // -- Handlers --
+  const handleSearch = useCallback(
+    (query: string) => {
+      const trimmed = query.trim()
+      setSearchParams(trimmed ? { q: query } : {})
+      store.getState().submitQuery(query, pipelineOpts, onSettled)
+    },
+    [setSearchParams, store, pipelineOpts, onSettled],
+  )
 
   const setFocusedChunkId = useCallback(
     (id: string | null) => {
@@ -114,124 +160,32 @@ export function SearchPage() {
     ],
   )
 
-  // --- Pipeline options (built from current prefs) ---
-  const buildOpts = useCallback(
-    (): PipelineOptions => ({
-      libraryId: libraryId!,
-      isAiMode: prefs.isAiMode,
-      hybridWeights: prefs.hybridWeights,
-      maxResults: prefs.maxResults,
-      minScore: prefs.minScore,
-      llmMaxTokens: prefs.llmMaxTokens,
-    }),
-    [
-      libraryId,
-      prefs.isAiMode,
-      prefs.hybridWeights,
-      prefs.maxResults,
-      prefs.minScore,
-      prefs.llmMaxTokens,
-    ],
-  )
-
-  // --- onSettled: persist complete state to router on pipeline completion ---
-  const onSettled = useCallback(
-    (state: SavedSearchState) => {
-      navigate(location.pathname + '?q=' + encodeURIComponent(state.query), {
-        replace: true,
-        state: { savedSearchState: state },
-      })
-    },
-    [navigate, location.pathname],
-  )
-
-  // --- Bootstrap: auto-search if ?q= exists with no saved state ---
-  const bootstrappedRef = useRef(false)
-  useEffect(() => {
-    if (bootstrappedRef.current) return
-    if (!urlQuery.trim() || savedState) return
-    if (embeddingStatus !== 'ready') return
-
-    bootstrappedRef.current = true
-    store.getState().submitQuery(urlQuery, buildOpts(), onSettled)
-  }, [embeddingStatus, urlQuery, savedState, store, buildOpts, onSettled])
-
-  // --- Cleanup on unmount ---
-  useEffect(
-    () => () => {
-      storeRef.current?.getState().destroy()
-    },
-    [],
-  )
-
-  // --- Preload LLM if AI mode is already enabled ---
-  useEffect(() => {
-    if (!prefs.isAiMode) return
-    if (useAppStore.getState().llmStatus !== 'idle') return
-    ensureModelLoaded(new AbortController().signal)
-  }, [prefs.isAiMode])
-
-  // --- Handlers (event-driven, no effects) ---
-  const handleSearch = useCallback(
-    (query: string) => {
-      const trimmed = query.trim()
-      setSearchParams(trimmed ? { q: query } : {})
-      store.getState().submitQuery(query, buildOpts(), onSettled)
-    },
-    [setSearchParams, store, buildOpts, onSettled],
-  )
-
+  // Pref changes: update local + persist to IndexedDB, re-search if active query
   const handleSetHybridWeights = useCallback(
     (weights: typeof prefs.hybridWeights) => {
       prefs.setHybridWeights(weights)
-      if (hasSearched && urlQuery.trim()) {
-        store.getState().submitQuery(
-          urlQuery,
-          {
-            ...buildOpts(),
-            hybridWeights: weights,
-          },
-          onSettled,
-        )
-      }
+      reSearchWithOverride({ hybridWeights: weights })
     },
-    [prefs, hasSearched, urlQuery, store, buildOpts, onSettled],
+    [prefs, reSearchWithOverride],
   )
 
   const handleSetMaxResults = useCallback(
     (n: number) => {
       prefs.setMaxResults(n)
-      if (hasSearched && urlQuery.trim()) {
-        store.getState().submitQuery(
-          urlQuery,
-          {
-            ...buildOpts(),
-            maxResults: n,
-          },
-          onSettled,
-        )
-      }
+      reSearchWithOverride({ maxResults: n })
     },
-    [prefs, hasSearched, urlQuery, store, buildOpts, onSettled],
+    [prefs, reSearchWithOverride],
   )
 
   const handleSetMinScore = useCallback(
     (n: number) => {
       prefs.setMinScore(n)
-      if (hasSearched && urlQuery.trim()) {
-        store.getState().submitQuery(
-          urlQuery,
-          {
-            ...buildOpts(),
-            minScore: n,
-          },
-          onSettled,
-        )
-      }
+      reSearchWithOverride({ minScore: n })
     },
-    [prefs, hasSearched, urlQuery, store, buildOpts, onSettled],
+    [prefs, reSearchWithOverride],
   )
 
+  // Token budget → regenerate AI answer only (no re-search)
   const handleSetLlmMaxTokens = useCallback(
     (n: number) => {
       prefs.setLlmMaxTokens(n)
@@ -241,16 +195,17 @@ export function SearchPage() {
           urlQuery,
           results,
           {
-            ...buildOpts(),
+            ...pipelineOpts,
             llmMaxTokens: n,
           },
           onSettled,
         )
       }
     },
-    [prefs, results, urlQuery, store, buildOpts, onSettled],
+    [prefs, results, urlQuery, store, pipelineOpts, onSettled],
   )
 
+  // -- AI toggle + model download --
   const toggleAi = useCallback(() => {
     if (prefs.isAiMode) {
       // Turn off AI
@@ -260,22 +215,13 @@ export function SearchPage() {
       if (llmStatus === 'ready') {
         // Turn on AI (model already loaded) — re-search to generate
         prefs.setIsAiMode(true)
-        if (hasSearched && urlQuery.trim()) {
-          store.getState().submitQuery(
-            urlQuery,
-            {
-              ...buildOpts(),
-              isAiMode: true,
-            },
-            onSettled,
-          )
-        }
+        reSearchWithOverride({ isAiMode: true })
       } else {
         // Need to download model first — show confirmation modal
         setShowModelModal(true)
       }
     }
-  }, [prefs, hasSearched, urlQuery, store, buildOpts, onSettled])
+  }, [prefs, reSearchWithOverride])
 
   const acceptModelDownload = useCallback(() => {
     setShowModelModal(false)
@@ -284,17 +230,44 @@ export function SearchPage() {
       store.getState().submitQuery(
         urlQuery,
         {
-          ...buildOpts(),
+          ...pipelineOpts,
           isAiMode: true,
         },
         onSettled,
       )
     }
-  }, [prefs, urlQuery, store, buildOpts, onSettled])
+  }, [prefs, urlQuery, store, pipelineOpts, onSettled])
 
   const cancelModelDownload = useCallback(() => setShowModelModal(false), [])
 
-  // --- Derived state ---
+  // -- Effects --
+  // Bootstrap: auto-search if ?q= exists with no saved state
+  const bootstrappedRef = useRef(false)
+  useEffect(() => {
+    if (bootstrappedRef.current) return
+    if (!urlQuery.trim() || savedState) return
+    if (embeddingStatus !== 'ready') return
+
+    bootstrappedRef.current = true
+    store.getState().submitQuery(urlQuery, pipelineOpts, onSettled)
+  }, [embeddingStatus, urlQuery, savedState, store, pipelineOpts, onSettled])
+
+  // Cleanup on unmount
+  useEffect(
+    () => () => {
+      storeRef.current?.getState().destroy()
+    },
+    [],
+  )
+
+  // Preload LLM if AI mode is already enabled
+  useEffect(() => {
+    if (!prefs.isAiMode) return
+    if (useAppStore.getState().llmStatus !== 'idle') return
+    ensureModelLoaded(new AbortController().signal)
+  }, [prefs.isAiMode])
+
+  // -- Derived (render-only) --
   const isSearching = status === 'searching'
   const isGenerating = status === 'generating'
   const showLLMAnswer =

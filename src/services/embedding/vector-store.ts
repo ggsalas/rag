@@ -1,5 +1,6 @@
 import { create, insert, search, remove, type AnyOrama } from '@orama/orama'
 import type { Chunk } from '@/types/document'
+import { getChunksByLibrary } from '@/services/chunk.service'
 import type { HybridWeights } from '@/types/search'
 import { EMBEDDING_DIMENSIONS, DEFAULT_MAX_RESULTS } from '@/lib/constants'
 
@@ -153,4 +154,17 @@ export function removeIndex(libraryId: string): void {
 /** Checks if a vector index exists for a library */
 export function hasIndex(libraryId: string): boolean {
   return indexes.has(libraryId)
+}
+
+/**
+ * Ensures the in-memory Orama vector index exists for a library.
+ * Orama is lost on page reload; this rebuilds it from IndexedDB chunks.
+ * No-op if the index is already populated (e.g. after ingest).
+ */
+export async function ensureIndex(libraryId: string): Promise<void> {
+  if (hasIndex(libraryId)) return
+  const chunks = await getChunksByLibrary(libraryId)
+  if (chunks.length > 0) {
+    await rebuildIndex(libraryId, chunks)
+  }
 }
