@@ -1,6 +1,6 @@
 import type { SearchResult } from '@/types/search'
 import type { LLMCitation } from '@/services/llm/llm.service'
-import type { SavedSearchState } from '@/hooks/useSearchStore'
+import type { SavedSearchState } from '@/types/search'
 import { ResultCard } from './ResultCard'
 import { EmptyState } from '@/components/ui/EmptyState'
 

@@ -10,12 +10,12 @@ import {
   getDocumentById,
 } from '@/services/document.service'
 import { useChunkData } from '@/hooks/data/useChunkData'
-import { useDocumentActions } from '@/hooks/useDocumentActions'
+import { useDocuments } from '@/hooks/useDocuments'
 import { MainPanel } from '@/components/sidebar/MainPanel'
 import { DocumentViewerHeader } from '@/components/document-viewer/DocumentViewerHeader'
 import { HighlightedText } from '@/components/document-viewer/HighlightedText'
 import type { DocumentContent, DocumentMeta } from '@/types/document'
-import type { SavedSearchState } from '@/hooks/useSearchStore'
+import type { SavedSearchState } from '@/types/search'
 
 export function DocumentViewerPage() {
   const { libraryId, documentId } = useParams<{
@@ -31,7 +31,7 @@ export function DocumentViewerPage() {
   const [error, setError] = useState<string | null>(null)
   const highlightRef = useRef<HTMLElement>(null)
 
-  const { deleteDocument } = useDocumentActions()
+  const { deleteDocument } = useDocuments(libraryId!)
   const locationState = location.state as {
     savedSearchState?: SavedSearchState
   } | null

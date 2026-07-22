@@ -1,13 +1,16 @@
 import { useEffect } from 'react'
-import { toast } from 'sonner'
 import { useAppStore } from '@/store/app.store'
 import { initEmbeddingModel } from '@/services/embedding/embedding.service'
-import { ModelDownloadToast } from '@/components/search/ModelDownloadToast'
 
-const TOAST_ID = 'model-status'
+/** Callbacks to notify the consumer about embedding model loading lifecycle */
+export interface EmbeddingLoadCallbacks {
+  onLoadStart: () => void
+  onLoadEnd: () => void
+  onLoadError: (message: string) => void
+}
 
 /** Hook that initializes and tracks the embedding model loading status */
-export function useEmbeddingStatus() {
+export function useEmbeddingStatus(callbacks: EmbeddingLoadCallbacks) {
   const embeddingStatus = useAppStore((s) => s.embeddingStatus)
   const setEmbeddingStatus = useAppStore((s) => s.setEmbeddingStatus)
   const setEmbeddingProgress = useAppStore((s) => s.setEmbeddingProgress)
@@ -17,26 +20,16 @@ export function useEmbeddingStatus() {
       if (embeddingStatus !== 'idle') return
       setEmbeddingStatus('loading')
       setEmbeddingProgress(0)
-      // Live progress toast; its content subscribes to the store so it updates itself.
-      toast(<ModelDownloadToast model="embedding" />, {
-        id: TOAST_ID,
-        duration: Infinity,
-      })
+      callbacks.onLoadStart()
 
       try {
         await initEmbeddingModel((progress) => setEmbeddingProgress(Math.round(progress * 100)))
         setEmbeddingStatus('ready')
-        // Keep the SAME toast (now showing 100% / "Embedding model ready") and
-        // dismiss it after a moment.
-        setTimeout(() => toast.dismiss(TOAST_ID), 2000)
+        callbacks.onLoadEnd()
       } catch (error) {
         console.error('Failed to load embedding model:', error)
         setEmbeddingStatus('error')
-        toast.error('Failed to load embedding model', {
-          id: TOAST_ID,
-          duration: Infinity,
-          closeButton: true,
-        })
+        callbacks.onLoadError(error instanceof Error ? error.message : 'Failed to load embedding model')
       }
     }
     loadModel()

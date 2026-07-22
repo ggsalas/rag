@@ -12,20 +12,43 @@ import { useStore } from 'zustand'
 import { useAppStore } from '@/store/app.store'
 import * as libraryService from '@/services/library.service'
 import { ensureIndex } from '@/services/embedding/vector-store'
+import {
+  ensureModelLoaded,
+  type ModelLoadCallbacks,
+} from '@/services/llm/llm.service'
 import type { SearchPreferences } from '@/types/library'
+import type {
+  SavedSearchState,
+  PipelineOptions,
+} from '@/types/search'
 import {
   createSearchStore,
-  ensureModelLoaded,
-  type SavedSearchState,
   type SearchStore,
-  type PipelineOptions,
 } from '@/hooks/useSearchStore'
 import { useSearchPreferences } from '@/hooks/useSearchPreferences'
 import { SearchBar } from '@/components/search/SearchBar'
 import { ResultList } from '@/components/search/ResultList'
 import { LLMAnswer } from '@/components/search/LLMAnswer'
 import { ModelDownloadModal } from '@/components/search/ModelDownloadModal'
+import { ModelDownloadToast } from '@/components/search/ModelDownloadToast'
 import { MainPanel } from '@/components/sidebar/MainPanel'
+import { toast } from 'sonner'
+
+/** Stable id so the progress toast and its success/error transition target the same toast. */
+const LLM_DOWNLOAD_TOAST_ID = 'llm-model-download'
+
+/** Creates model load callbacks for LLM service */
+function getLlmModelCallbacks(): ModelLoadCallbacks {
+  return {
+    getStatus: () => useAppStore.getState().llmStatus,
+    setStatus: (s) => useAppStore.getState().setLlmStatus(s as any),
+    setProgress: (p) => useAppStore.getState().setLlmProgress(p),
+    subscribe: (listener) => useAppStore.subscribe((state) => listener(state.llmStatus)),
+    showToast: () => toast(<ModelDownloadToast model="llm" />, { id: LLM_DOWNLOAD_TOAST_ID, duration: Infinity }),
+    dismissToast: () => toast.dismiss(LLM_DOWNLOAD_TOAST_ID),
+    showErrorToast: (msg) => toast.error(msg, { id: LLM_DOWNLOAD_TOAST_ID, duration: 6000 }),
+  }
+}
 
 interface LocationState {
   savedSearchState?: SavedSearchState
@@ -82,7 +105,7 @@ export function SearchPage() {
   // reads in async pipelines and selective subscriptions for streaming re-renders.
   const storeRef = useRef<SearchStore | null>(null)
   if (!storeRef.current) {
-    storeRef.current = createSearchStore(savedState)
+    storeRef.current = createSearchStore(savedState, getLlmModelCallbacks())
   }
   const store = storeRef.current
 
@@ -264,7 +287,7 @@ export function SearchPage() {
   useEffect(() => {
     if (!prefs.isAiMode) return
     if (useAppStore.getState().llmStatus !== 'idle') return
-    ensureModelLoaded(new AbortController().signal)
+    ensureModelLoaded(new AbortController().signal, getLlmModelCallbacks())
   }, [prefs.isAiMode])
 
   // -- Derived (render-only) --

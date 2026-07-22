@@ -1,42 +1,18 @@
 import { createStore, type StoreApi } from 'zustand/vanilla'
-import { toast } from 'sonner'
 import { search as searchService } from '@/services/search/search.service'
 import {
-  initLLMModel,
   generateAnswer,
   abortLLMGeneration,
+  ensureModelLoaded,
+  type ModelLoadCallbacks,
 } from '@/services/llm/llm.service'
 import type { LLMCitation } from '@/services/llm/llm.service'
-import type { SearchResult, HybridWeights } from '@/types/search'
-import { useAppStore } from '@/store/app.store'
-import { ModelDownloadToast } from '@/components/search/ModelDownloadToast'
-
-/** Stable id so the progress toast and its success/error transition target the same toast. */
-const LLM_DOWNLOAD_TOAST_ID = 'llm-model-download'
-
-/** Complete search state persisted to router state so it survives navigation */
-export interface SavedSearchState {
-  query: string
-  results: SearchResult[]
-  focusedChunkId?: string | null
-  ai?: {
-    answer: string
-    citations: LLMCitation[]
-  }
-}
-
-/** Options passed to submitQuery for the current pipeline run */
-export interface PipelineOptions {
-  libraryId: string
-  isAiMode: boolean
-  hybridWeights: HybridWeights
-  maxResults: number
-  minScore: number
-  llmMaxTokens: number
-}
-
-/** Callback invoked when a pipeline run completes successfully (not aborted) */
-export type OnSettledCallback = (state: SavedSearchState) => void
+import type {
+  SearchResult,
+  SavedSearchState,
+  PipelineOptions,
+  OnSettledCallback,
+} from '@/types/search'
 
 export interface SearchPipelineState {
   // --- State ---
@@ -73,7 +49,7 @@ interface InternalSlice {
 type FullState = SearchPipelineState & InternalSlice
 
 /** Creates a page-scoped search pipeline store */
-export function createSearchStore(savedState?: SavedSearchState) {
+export function createSearchStore(savedState?: SavedSearchState, modelCallbacks?: ModelLoadCallbacks) {
   return createStore<FullState>((set, get) => ({
     // --- Initial State (hydrate from savedState if available) ---
     status: 'idle',
@@ -123,7 +99,7 @@ export function createSearchStore(savedState?: SavedSearchState) {
         citations: [],
       })
 
-      runSearchPipeline(ctrl, trimmed, query, opts, onSettled, set, get)
+      runSearchPipeline(ctrl, trimmed, query, opts, onSettled, set, get, modelCallbacks)
     },
 
     regenerateAnswer: (query, results, opts, onSettled) => {
@@ -143,7 +119,7 @@ export function createSearchStore(savedState?: SavedSearchState) {
         llmError: null,
       })
 
-      runRegeneratePipeline(ctrl, query, results, opts, onSettled, set, get)
+      runRegeneratePipeline(ctrl, query, results, opts, onSettled, set, get, modelCallbacks)
     },
 
     clear: () => {
@@ -185,6 +161,7 @@ async function runSearchPipeline(
   onSettled: OnSettledCallback | undefined,
   set: SetState,
   get: GetState,
+  modelCallbacks?: ModelLoadCallbacks,
 ): Promise<void> {
   try {
     // 1. Search chunks
@@ -207,7 +184,12 @@ async function runSearchPipeline(
     }
 
     // 2. Ensure LLM model is loaded
-    const modelReady = await ensureModelLoaded(ctrl.signal)
+    if (!modelCallbacks) {
+      set({ status: 'idle' })
+      onSettled?.({ query, results })
+      return
+    }
+    const modelReady = await ensureModelLoaded(ctrl.signal, modelCallbacks)
     if (ctrl.signal.aborted) return
     if (!modelReady) {
       set({ status: 'idle' })
@@ -261,9 +243,14 @@ async function runRegeneratePipeline(
   onSettled: OnSettledCallback | undefined,
   set: SetState,
   get: GetState,
+  modelCallbacks?: ModelLoadCallbacks,
 ): Promise<void> {
   try {
-    const modelReady = await ensureModelLoaded(ctrl.signal)
+    if (!modelCallbacks) {
+      set({ status: 'idle' })
+      return
+    }
+    const modelReady = await ensureModelLoaded(ctrl.signal, modelCallbacks)
     if (ctrl.signal.aborted) return
     if (!modelReady) {
       set({ status: 'idle' })
@@ -299,67 +286,6 @@ async function runRegeneratePipeline(
       llmError: err instanceof Error ? err.message : 'Generation failed',
     })
   }
-}
-
-// --- Helpers ---
-
-/**
- * Loads the LLM model if not already ready. Shows a Sonner toast with progress.
- * Returns true if the model is ready after the call. Respects abort signal.
- */
-export async function ensureModelLoaded(signal: AbortSignal): Promise<boolean> {
-  const { llmStatus } = useAppStore.getState()
-  if (llmStatus === 'ready') return true
-  if (llmStatus === 'loading') {
-    return waitForModelReady(signal)
-  }
-
-  // Start loading
-  useAppStore.getState().setLlmStatus('loading')
-  useAppStore.getState().setLlmProgress(0)
-  toast(<ModelDownloadToast model="llm" />, {
-    id: LLM_DOWNLOAD_TOAST_ID,
-    duration: Infinity,
-  })
-
-  try {
-    await initLLMModel((progress) => {
-      if (signal.aborted) return
-      useAppStore.getState().setLlmProgress(Math.round(progress * 100))
-    })
-    if (signal.aborted) return false
-    useAppStore.getState().setLlmStatus('ready')
-    setTimeout(() => toast.dismiss(LLM_DOWNLOAD_TOAST_ID), 2000)
-    return true
-  } catch (err) {
-    if (signal.aborted) return false
-    const message = err instanceof Error ? err.message : 'Failed to load AI model'
-    useAppStore.getState().setLlmStatus('error')
-    toast.error(message, { id: LLM_DOWNLOAD_TOAST_ID, duration: 6000 })
-    return false
-  }
-}
-
-/** Waits for LLM status to leave 'loading' state. Resolves true if ready, false otherwise. */
-function waitForModelReady(signal: AbortSignal): Promise<boolean> {
-  return new Promise((resolve) => {
-    if (signal.aborted) { resolve(false); return }
-
-    const unsub = useAppStore.subscribe((state) => {
-      if (state.llmStatus === 'ready') {
-        unsub()
-        resolve(true)
-      } else if (state.llmStatus === 'error' || state.llmStatus === 'idle') {
-        unsub()
-        resolve(false)
-      }
-    })
-
-    signal.addEventListener('abort', () => {
-      unsub()
-      resolve(false)
-    }, { once: true })
-  })
 }
 
 export type SearchStore = ReturnType<typeof createSearchStore>

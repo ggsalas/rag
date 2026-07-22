@@ -1,6 +1,6 @@
 import { useLayoutEffect, useRef } from 'react'
 import type { SearchResult } from '@/types/search'
-import type { SavedSearchState } from '@/hooks/useSearchStore'
+import type { SavedSearchState } from '@/types/search'
 import { ScoreBadge } from './ScoreBadge'
 import {
   useParams,

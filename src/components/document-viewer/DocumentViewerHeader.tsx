@@ -1,6 +1,6 @@
 import { Link } from 'react-router'
 import type { DocumentMeta } from '@/types/document'
-import type { SavedSearchState } from '@/hooks/useSearchStore'
+import type { SavedSearchState } from '@/types/search'
 import { DeleteButton } from '@/components/ui/DeleteButton'
 import { buttonClasses } from '@/components/ui/Button'
 
