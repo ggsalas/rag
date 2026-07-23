@@ -2,12 +2,7 @@ import { useLayoutEffect, useRef } from 'react'
 import type { SearchResult } from '@/types/search'
 import type { SavedSearchState } from '@/types/search'
 import { ScoreBadge } from './ScoreBadge'
-import {
-  useParams,
-  useSearchParams,
-  useLocation,
-  useNavigate,
-} from 'react-router'
+import { useParams, useLocation, useNavigate } from 'react-router'
 
 interface ResultCardProps {
   result: SearchResult
@@ -24,10 +19,8 @@ export function ResultCard({
   llmCitationIndex,
 }: ResultCardProps) {
   const { libraryId } = useParams<{ libraryId: string }>()
-  const [searchParams] = useSearchParams()
   const location = useLocation()
   const navigate = useNavigate()
-  const currentQuery = searchParams.get('q') || ''
   const cardRef = useRef<HTMLDivElement>(null)
 
   // useLayoutEffect fires before the browser paints — scroll position is set on the first
