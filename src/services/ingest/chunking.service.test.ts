@@ -18,19 +18,34 @@ describe('chunking.service', () => {
       expect(chunks[0]!.chunkIndex).toBe(0)
     })
 
-    it('should split long text into multiple chunks', () => {
-      const text = 'word '.repeat(200) // ~1000 chars
+    it('should split long text into multiple chunks when multiple paragraphs exist', () => {
+      // Use multiple paragraphs (not one big paragraph) so chunking splits on paragraph boundaries
+      const paragraphs = Array.from({ length: 20 }, (_, i) => `Paragraph ${i}: ${'word '.repeat(20)}`)
+      const text = paragraphs.join('\n\n')
       const chunks = chunkText(text, { size: 300, overlap: 50 })
       expect(chunks.length).toBeGreaterThan(1)
     })
 
-    it('should respect chunk size limit', () => {
-      const text = 'word '.repeat(200)
+    it('should not exceed size for well-separated paragraphs', () => {
+      const paragraphs = Array.from({ length: 20 }, (_, i) => `P${i}: ${'word '.repeat(10)}`)
+      const text = paragraphs.join('\n\n')
       const chunks = chunkText(text, { size: 300, overlap: 50 })
-      // Each chunk should be near max size (with some tolerance for word boundaries)
+      // Chunks that don't contain an oversized paragraph should respect size
       for (const chunk of chunks) {
-        expect(chunk.text.length).toBeLessThanOrEqual(350)
+        // Each chunk is made of whole paragraphs; may exceed size only if a single paragraph exceeds it
+        const paragraphsInChunk = chunk.text.split(/\n\s*\n/)
+        if (paragraphsInChunk.length > 1) {
+          expect(chunk.text.length).toBeLessThanOrEqual(350)
+        }
       }
+    })
+
+    it('should keep a single long paragraph as one oversized chunk without cutting', () => {
+      const longParagraph = 'word '.repeat(200) // ~1000 chars, no blank lines
+      const chunks = chunkText(longParagraph, { size: 300, overlap: 50 })
+      // A single paragraph is atomic — never split, even if it exceeds size
+      expect(chunks).toHaveLength(1)
+      expect(chunks[0]!.text).toBe(longParagraph.trim())
     })
 
     it('should assign sequential chunkIndex', () => {
@@ -43,7 +58,9 @@ describe('chunking.service', () => {
     })
 
     it('should use default size and overlap from constants', () => {
-      const text = 'word '.repeat(300)
+      // Multiple paragraphs so chunking can split on paragraph boundaries
+      const paragraphs = Array.from({ length: 50 }, (_, i) => `P${i}: ${'word '.repeat(20)}`)
+      const text = paragraphs.join('\n\n')
       const chunks = chunkText(text)
       expect(chunks.length).toBeGreaterThan(1)
     })
@@ -57,6 +74,25 @@ describe('chunking.service', () => {
       const chunks = chunkText('Some paragraph.', { size: 500, overlap: 100 })
       expect(chunks[0]!.sectionPath).toEqual([])
       expect(chunks[0]!.headingText).toBe('')
+    })
+
+    it('should never partially split a paragraph across chunks', () => {
+      // Each paragraph is atomic: it appears whole in exactly one chunk
+      const paragraphs = [
+        'First paragraph with some content.',
+        'Second paragraph with different content.',
+        'Third paragraph that is also unique.',
+        'Fourth paragraph to fill things up.',
+      ]
+      const text = paragraphs.join('\n\n')
+      const chunks = chunkText(text, { size: 80, overlap: 0 })
+      expect(chunks.length).toBeGreaterThan(1)
+
+      // Every original paragraph must appear whole in exactly one chunk
+      for (const para of paragraphs) {
+        const matches = chunks.filter((c) => c.text.includes(para))
+        expect(matches).toHaveLength(1)
+      }
     })
   })
 
@@ -74,15 +110,39 @@ describe('chunking.service', () => {
       expect(chunks[1]!.text).toContain('Short body paragraph')
     })
 
-    it('splits oversized sections via paragraph chunking', () => {
-      const text = `## Big\n\n${'word '.repeat(300)}`
+    it('keeps a single oversized Markdown block as one chunk without cutting', () => {
+      // A single long paragraph under a heading is one atomic block — never split
+      const longParagraph = 'word '.repeat(300)
+      const text = `## Big\n\n${longParagraph}`
+      const chunks = chunkMarkdown(text, { size: 300, overlap: 50 })
+      expect(chunks).toHaveLength(1)
+      expect(chunks[0]!.sectionPath).toEqual(['Big'])
+      expect(chunks[0]!.headingText).toBe('Big')
+      expect(chunks[0]!.text).toBe(longParagraph.trim())
+    })
+
+    it('splits sections with multiple blocks into separate chunks', () => {
+      // Multiple paragraphs under a heading — each paragraph is a block
+      const paragraphs = Array.from({ length: 10 }, (_, i) => `Block ${i}: ${'word '.repeat(20)}`)
+      const text = `## Big\n\n${paragraphs.join('\n\n')}`
       const chunks = chunkMarkdown(text, { size: 300, overlap: 50 })
       expect(chunks.length).toBeGreaterThan(1)
-      // All sub-chunks should inherit the section path
       for (const chunk of chunks) {
         expect(chunk.sectionPath).toEqual(['Big'])
         expect(chunk.headingText).toBe('Big')
       }
+    })
+
+    it('never splits a Markdown paragraph containing a link', () => {
+      const longParagraph =
+        'This is a long paragraph with many words. '.repeat(10) +
+        'And here is a [very important link](https://example.com/some/long/path?query=value) at the end.'
+      const text = `## Section\n\n${longParagraph}`
+      const chunks = chunkMarkdown(text, { size: 300, overlap: 50 })
+      // Single paragraph = single block = one chunk, never split
+      expect(chunks).toHaveLength(1)
+      // Link syntax must be fully intact
+      expect(chunks[0]!.text).toContain('[very important link](https://example.com/some/long/path?query=value)')
     })
 
     it('assigns sequential chunkIndex', () => {
@@ -151,6 +211,29 @@ describe('chunking.service', () => {
       expect(chunks[0]!.searchText).not.toContain('```')
       // But chunk.text should preserve Markdown
       expect(chunks[0]!.text).toContain('```js')
+    })
+
+    it('never partially splits Markdown paragraphs and preserves section context', () => {
+      const paragraphs = [
+        'First paragraph with some content here.',
+        'Second paragraph with different content inside.',
+        'Third paragraph that is also unique and distinct.',
+        'Fourth paragraph to make things add up.',
+      ]
+      const text = `## MySection\n\n${paragraphs.join('\n\n')}`
+      const chunks = chunkMarkdown(text, { size: 80, overlap: 0 })
+      expect(chunks.length).toBeGreaterThan(1)
+
+      // Every original paragraph must appear whole in exactly one chunk
+      for (const para of paragraphs) {
+        const matches = chunks.filter((c) => c.text.includes(para))
+        expect(matches).toHaveLength(1)
+      }
+      // All chunks inherit the section context
+      for (const chunk of chunks) {
+        expect(chunk.sectionPath).toEqual(['MySection'])
+        expect(chunk.headingText).toBe('MySection')
+      }
     })
 
     it('handles GFM tables without throwing and preserves them', () => {

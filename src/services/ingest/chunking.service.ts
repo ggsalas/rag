@@ -26,6 +26,10 @@ export interface ChunkOptions {
 /**
  * Chunks plain text by paragraphs (no heading awareness).
  * Used for .txt and .docx documents that lack Markdown structure.
+ *
+ * Oversized-unit policy: paragraphs are atomic. A paragraph that exceeds
+ * `size` is emitted as a single oversized chunk rather than being split,
+ * so sentences are never cut.
  */
 export function chunkText(text: string, options?: ChunkOptions): ChunkData[] {
   const size = options?.size ?? CHUNK_SIZE
@@ -34,76 +38,74 @@ export function chunkText(text: string, options?: ChunkOptions): ChunkData[] {
 
   if (!text.trim()) return chunks
 
-  // Split by paragraphs first
-  const paragraphs = text.split(/\n\s*\n/)
-  let currentChunk = ''
+  // Split by blank-line paragraphs — each paragraph is an atomic unit
+  const paragraphs = text.split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean)
+
+  let currentUnits: string[] = []
+  let currentLen = 0
   let chunkIndex = 0
 
-  for (const paragraph of paragraphs) {
-    const trimmed = paragraph.trim()
-    if (!trimmed) continue
-
-    // If adding this paragraph exceeds size limit, close current chunk
-    if (
-      currentChunk.length + trimmed.length + 1 > size &&
-      currentChunk.length > 0
-    ) {
-      chunks.push({
-        text: currentChunk.trim(),
-        searchText: markdownToSearchText(currentChunk.trim()),
-        sectionPath: [],
-        headingText: '',
-        chunkIndex,
-      })
-      chunkIndex++
-
-      // Overlap: keep the last `overlap` chars from the previous chunk
-      if (overlap > 0 && currentChunk.length > overlap) {
-        currentChunk = currentChunk.slice(-overlap) + ' ' + trimmed
-      } else {
-        currentChunk = trimmed
-      }
-    } else {
-      currentChunk = currentChunk ? currentChunk + '\n\n' + trimmed : trimmed
-    }
-
-    // If a single paragraph exceeds size, split by sentences
-    while (currentChunk.length > size) {
-      const breakPoint = findBreakPoint(currentChunk, size)
-      const chunkText = currentChunk.slice(0, breakPoint).trim()
-      chunks.push({
-        text: chunkText,
-        searchText: markdownToSearchText(chunkText),
-        sectionPath: [],
-        headingText: '',
-        chunkIndex,
-      })
-      chunkIndex++
-
-      const remaining = currentChunk.slice(breakPoint - overlap).trim()
-      currentChunk = remaining
-    }
-  }
-
-  if (currentChunk.trim()) {
+  /** Join units into a chunk and push it */
+  const flush = () => {
+    if (currentUnits.length === 0) return
+    const joined = currentUnits.join('\n\n')
     chunks.push({
-      text: currentChunk.trim(),
-      searchText: markdownToSearchText(currentChunk.trim()),
+      text: joined,
+      searchText: markdownToSearchText(joined),
       sectionPath: [],
       headingText: '',
       chunkIndex,
     })
+    chunkIndex++
   }
 
+  /** Pick trailing units from the previous chunk for overlap (whole units only) */
+  const computeOverlap = (prevUnits: string[]): string[] => {
+    if (overlap <= 0 || prevUnits.length === 0) return []
+    const overlapUnits: string[] = []
+    let total = 0
+    // Walk backwards to collect whole units that fit within overlap budget
+    for (let i = prevUnits.length - 1; i >= 0; i--) {
+      const addLen = overlapUnits.length === 0
+        ? prevUnits[i]!.length
+        : prevUnits[i]!.length + 2 // '\n\n' separator
+      if (total + addLen > overlap) break
+      overlapUnits.unshift(prevUnits[i]!)
+      total += addLen
+    }
+    return overlapUnits
+  }
+
+  for (const paragraph of paragraphs) {
+    const sepLen = currentUnits.length > 0 ? 2 : 0 // '\n\n'
+    const newLen = currentLen + sepLen + paragraph.length
+
+    if (newLen > size && currentUnits.length > 0) {
+      // Flush current chunk, then start a new one with overlap
+      const prevUnits = currentUnits
+      flush()
+      const overlapUnits = computeOverlap(prevUnits)
+      currentUnits = [...overlapUnits, paragraph]
+      currentLen = currentUnits.join('\n\n').length
+    } else {
+      currentUnits.push(paragraph)
+      currentLen = newLen
+    }
+  }
+
+  flush()
   return chunks
 }
 
 /**
- * Chunks Markdown by heading sections with paragraph-aware splitting.
+ * Chunks Markdown by heading sections with AST block-level packing.
  *
  * - Tracks heading hierarchy to build sectionPath for each chunk
- * - Chunks by complete paragraphs within a section when possible
- * - Splits oversized paragraphs at sentence/word boundaries
+ * - Packs whole AST block units (paragraphs, lists, tables, code blocks, etc.)
+ *   into chunks; never slices serialized Markdown strings
+ * - This guarantees Markdown links and other inline syntax are never cut
+ * - Oversized-unit policy: a single block that exceeds `size` is emitted as
+ *   one oversized chunk rather than being split
  * - Avoids orphan heading-only chunks
  * - Every chunk gets the applicable section context
  * - Sequential chunkIndex is preserved
@@ -133,36 +135,65 @@ export function chunkMarkdown(
         ? section.headingStack[section.headingStack.length - 1]!.text
         : ''
 
-    // Serialize section content blocks to Markdown
-    const sectionMarkdown = serializeBlocks(section.blocks)
+    if (section.blocks.length === 0) continue
 
-    if (!sectionMarkdown.trim()) continue
+    // Serialize each block individually to get atomic Markdown units
+    const serializedUnits = section.blocks.map((block) => serializeBlocks([block]))
 
-    if (sectionMarkdown.length <= size) {
-      // Section fits in one chunk
-      const chunkText = sectionMarkdown.trim()
+    // Pack whole block units into chunks up to `size`
+    let currentUnits: string[] = []
+    let currentLen = 0
+
+    /** Join units into a chunk and push it */
+    const flush = () => {
+      if (currentUnits.length === 0) return
+      const joined = currentUnits.join('\n\n')
       chunks.push({
-        text: chunkText,
-        searchText: markdownToSearchText(chunkText),
+        text: joined,
+        searchText: markdownToSearchText(joined),
         sectionPath,
         headingText,
         chunkIndex,
       })
       chunkIndex++
-    } else {
-      // Section too long — split by paragraphs within the section
-      const subChunks = splitByParagraphs(sectionMarkdown, size, overlap)
-      for (const sub of subChunks) {
-        chunks.push({
-          text: sub,
-          searchText: markdownToSearchText(sub),
-          sectionPath,
-          headingText,
-          chunkIndex,
-        })
-        chunkIndex++
+    }
+
+    /** Pick trailing units from the previous chunk for overlap (whole units only) */
+    const computeOverlap = (prevUnits: string[]): string[] => {
+      if (overlap <= 0 || prevUnits.length === 0) return []
+      const overlapUnits: string[] = []
+      let total = 0
+      for (let i = prevUnits.length - 1; i >= 0; i--) {
+        const addLen = overlapUnits.length === 0
+          ? prevUnits[i]!.length
+          : prevUnits[i]!.length + 2 // '\n\n' separator
+        if (total + addLen > overlap) break
+        overlapUnits.unshift(prevUnits[i]!)
+        total += addLen
+      }
+      return overlapUnits
+    }
+
+    for (const unit of serializedUnits) {
+      if (!unit) continue
+
+      const sepLen = currentUnits.length > 0 ? 2 : 0 // '\n\n'
+      const newLen = currentLen + sepLen + unit.length
+
+      if (newLen > size && currentUnits.length > 0) {
+        // Flush current chunk, then start a new one with overlap
+        const prevUnits = currentUnits
+        flush()
+        const overlapUnits = computeOverlap(prevUnits)
+        currentUnits = [...overlapUnits, unit]
+        currentLen = currentUnits.join('\n\n').length
+      } else {
+        currentUnits.push(unit)
+        currentLen = newLen
       }
     }
+
+    flush()
   }
 
   return chunks
@@ -275,64 +306,4 @@ function serializeBlocks(blocks: BlockContent[]): string {
   return result.trim()
 }
 
-/**
- * Splits Markdown text by paragraphs, respecting size limits.
- * Falls back to sentence/word splitting for oversized paragraphs.
- */
-function splitByParagraphs(
-  text: string,
-  size: number,
-  overlap: number,
-): string[] {
-  const chunks: string[] = []
-  const paragraphs = text.split(/\n\s*\n/)
-  let currentChunk = ''
 
-  for (const paragraph of paragraphs) {
-    const trimmed = paragraph.trim()
-    if (!trimmed) continue
-
-    // If adding this paragraph exceeds size limit, close current chunk
-    if (
-      currentChunk.length + trimmed.length + 1 > size &&
-      currentChunk.length > 0
-    ) {
-      chunks.push(currentChunk.trim())
-
-      // Overlap: keep the last `overlap` chars from the previous chunk
-      if (overlap > 0 && currentChunk.length > overlap) {
-        currentChunk = currentChunk.slice(-overlap) + '\n\n' + trimmed
-      } else {
-        currentChunk = trimmed
-      }
-    } else {
-      currentChunk = currentChunk ? currentChunk + '\n\n' + trimmed : trimmed
-    }
-
-    // If a single paragraph exceeds size, split by sentences
-    while (currentChunk.length > size) {
-      const breakPoint = findBreakPoint(currentChunk, size)
-      chunks.push(currentChunk.slice(0, breakPoint).trim())
-
-      const remaining = currentChunk.slice(breakPoint - overlap).trim()
-      currentChunk = remaining
-    }
-  }
-
-  if (currentChunk.trim()) {
-    chunks.push(currentChunk.trim())
-  }
-
-  return chunks
-}
-
-/** Finds an appropriate break point in text to avoid splitting mid-sentence */
-function findBreakPoint(text: string, maxLength: number): number {
-  // Look for sentence boundary before the limit
-  const sub = text.slice(0, maxLength)
-  const lastPeriod = sub.lastIndexOf('. ')
-  if (lastPeriod > maxLength * 0.5) return lastPeriod + 2
-  const lastSpace = sub.lastIndexOf(' ')
-  if (lastSpace > maxLength * 0.3) return lastSpace + 1
-  return maxLength
-}

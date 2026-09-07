@@ -112,7 +112,7 @@ export function DocumentViewerHeader({
                   : 'No chunks to inspect'
               }
             >
-              Show raw text
+              Chunk txt/md
             </button>
           )}
         </div>
