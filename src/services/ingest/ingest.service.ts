@@ -2,6 +2,7 @@ import { generateId } from '@/lib/utils'
 import { parseFile } from './parser.service'
 import { chunkText, chunkMarkdown } from './chunking.service'
 import { sanitize } from './sanitize.service'
+import { filterMalformedLayoutBlocks } from './malformed-layout-filter.service'
 import { filterBoilerplateSections } from './section-filter.service'
 import { embedBatch } from '@/services/embedding/embedding.service'
 import { insertChunks } from '@/services/embedding/vector-store'
@@ -75,8 +76,15 @@ async function processDocument(
 
     // Enable conservative heuristic for unknown boilerplate-like sections
     // Named section filter (References, Bibliography, etc.) is the primary filter
+    //
+    // For structured Markdown, first drop malformed layout/sidebar blocks
+    // (consecutive heading runs + link-heavy/sidebar content emitted by
+    // LiteParse from Wikipedia-style infoboxes). Runs before the named
+    // boilerplate filter so sidebar noise doesn't leak into chunking.
     const filteredText = isStructuredMarkdown
-      ? filterBoilerplateSections(cleanText, { enableHeuristic: true })
+      ? filterBoilerplateSections(filterMalformedLayoutBlocks(cleanText), {
+          enableHeuristic: true,
+        })
       : cleanText
 
     await saveDocumentContent({

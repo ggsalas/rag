@@ -11,6 +11,8 @@ interface DocumentViewerHeaderProps {
   highlightChunkIndex: number | null
   onNavigateChunk: (index: number) => void
   onDelete: () => void
+  showChunkInspector?: boolean
+  onToggleChunkInspector?: () => void
 }
 
 const STATUS_COLORS: Record<DocumentMeta['status'], string> = {
@@ -29,9 +31,11 @@ export function DocumentViewerHeader({
   highlightChunkIndex,
   onNavigateChunk,
   onDelete,
+  showChunkInspector = false,
+  onToggleChunkInspector,
 }: DocumentViewerHeaderProps) {
   return (
-    <div className="sticky top-0 z-10 bg-background border-b border-border">
+    <div className="bg-background border-b border-border">
       <div className="max-w-5xl mx-auto px-6 py-4">
         <div className="flex items-center justify-between mb-3">
           <Link
@@ -93,6 +97,24 @@ export function DocumentViewerHeader({
               ↓
             </button>
           </div>
+          {onToggleChunkInspector && (
+            <button
+              onClick={onToggleChunkInspector}
+              disabled={document.chunkCount === 0}
+              className={`px-2 py-1 text-xs font-medium rounded border transition-colors ${
+                showChunkInspector
+                  ? 'bg-foreground text-background border-foreground'
+                  : 'bg-transparent border-border text-foreground hover:bg-accent'
+              } disabled:opacity-30 disabled:cursor-not-allowed`}
+              title={
+                document.chunkCount > 0
+                  ? 'Toggle chunk raw text inspector'
+                  : 'No chunks to inspect'
+              }
+            >
+              Show raw text
+            </button>
+          )}
         </div>
       </div>
     </div>

@@ -163,4 +163,74 @@ def foo():
     expect(out).toContain('With multiple lines')
     expect(out).not.toContain('>')
   })
+
+  it('removes Wikipedia-style numeric citation markers', () => {
+    const input =
+      'The language was created in 1972.[6] It is widely used.[10] See also.[1, 2, 3]'
+    const out = markdownToSearchText(input)
+    expect(out).toContain('The language was created in 1972.')
+    expect(out).toContain('It is widely used.')
+    expect(out).toContain('See also.')
+    expect(out).not.toContain('[6]')
+    expect(out).not.toContain('[10]')
+    expect(out).not.toContain('[1, 2, 3]')
+  })
+
+  it('removes single-letter citation markers like [a] or [b]', () => {
+    const input = 'Some claim.[a] Another claim.[b]'
+    const out = markdownToSearchText(input)
+    expect(out).toContain('Some claim.')
+    expect(out).toContain('Another claim.')
+    expect(out).not.toContain('[a]')
+    expect(out).not.toContain('[b]')
+  })
+
+  it('removes escaped citation markers (normalized by remark)', () => {
+    // In Markdown, \[a\] and \[6\] are escaped brackets.
+    // remark normalizes them to [a] and [6] in text nodes,
+    // so our citation stripper should still remove them.
+    const input = 'A claim\\[a\\] and a reference\\[6\\].'
+    const out = markdownToSearchText(input)
+    expect(out).toContain('A claim')
+    expect(out).toContain('and a reference')
+    expect(out).not.toContain('[a]')
+    expect(out).not.toContain('[6]')
+  })
+
+  it('preserves meaningful bracketed content like [C++] or [API]', () => {
+    const input =
+      'We use [C++] for performance and [API] for integration. Also [Node.js] and [foo bar].'
+    const out = markdownToSearchText(input)
+    expect(out).toContain('[C++]')
+    expect(out).toContain('[API]')
+    expect(out).toContain('[Node.js]')
+    expect(out).toContain('[foo bar]')
+  })
+
+  it('preserves link text and removes strong/emphasis markers', () => {
+    const input =
+      'Read the **[official docs](https://example.com)** for *more* info.'
+    const out = markdownToSearchText(input)
+    expect(out).toContain('official docs')
+    expect(out).toContain('more')
+    expect(out).toContain('info')
+    expect(out).not.toContain('**')
+    expect(out).not.toContain('*')
+    expect(out).not.toContain('https://example.com')
+    expect(out).not.toContain('](')
+  })
+
+  it('does not strip citations inside code blocks', () => {
+    const input = '```\nconst ref = [1];\nconst x = [a];\n```'
+    const out = markdownToSearchText(input)
+    expect(out).toContain('[1]')
+    expect(out).toContain('[a]')
+  })
+
+  it('does not strip citations inside inline code', () => {
+    const input = 'Use `arr[0]` and `map[key]` to access.'
+    const out = markdownToSearchText(input)
+    expect(out).toContain('arr[0]')
+    expect(out).toContain('map[key]')
+  })
 })

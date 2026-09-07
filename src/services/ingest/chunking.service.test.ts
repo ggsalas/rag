@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { chunkText, chunkMarkdown } from './chunking.service'
+import { chunkText, chunkMarkdown, type ChunkData } from './chunking.service'
 
 describe('chunking.service', () => {
   describe('chunkText', () => {
@@ -151,6 +151,32 @@ describe('chunking.service', () => {
       expect(chunks[0]!.searchText).not.toContain('```')
       // But chunk.text should preserve Markdown
       expect(chunks[0]!.text).toContain('```js')
+    })
+
+    it('handles GFM tables without throwing and preserves them', () => {
+      // Regression: serializeBlocks() was missing remarkGfm, so table nodes
+      // threw "Cannot handle unknown node `table`" during Markdown chunking.
+      const text = `## Metrics
+
+| Name | Value |
+| --- | --- |
+| Precision | 0.92 |
+| Recall | 0.87 |`
+
+      let chunks: ChunkData[] = []
+      expect(() => {
+        chunks = chunkMarkdown(text, { size: 500, overlap: 100 })
+      }).not.toThrow()
+
+      expect(chunks).toHaveLength(1)
+      expect(chunks[0]!.sectionPath).toEqual(['Metrics'])
+      // Table preserved (serialized compactly: tableCellPadding disabled)
+      expect(chunks[0]!.text).toContain('|Name|Value|')
+      expect(chunks[0]!.text).toContain('|Precision|0.92|')
+      expect(chunks[0]!.text).toContain('|Recall|0.87|')
+      // searchText keeps cell content without pipes
+      expect(chunks[0]!.searchText).toContain('Precision')
+      expect(chunks[0]!.searchText).toContain('0.92')
     })
   })
 })

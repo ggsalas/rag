@@ -259,6 +259,10 @@ function serializeBlocks(blocks: BlockContent[]): string {
   const root: Root = { type: 'root', children: blocks }
 
   const result = unified()
+    // remarkGfm registers table handlers; without it, GFM table nodes throw
+    // "Cannot handle unknown node `table`". Disable column padding / pipe
+    // alignment to keep sparse tables compact (same rationale as sanitize.service.ts).
+    .use(remarkGfm, { tableCellPadding: false, tablePipeAlign: false })
     .use(remarkStringify, {
       bullet: '-',
       fences: true,

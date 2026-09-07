@@ -29,6 +29,7 @@ export function DocumentViewerPage() {
   const [document, setDocument] = useState<DocumentMeta | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [showChunkInspector, setShowChunkInspector] = useState(false)
   const highlightRef = useRef<HTMLElement>(null)
 
   const { deleteDocument } = useDocuments(libraryId!)
@@ -78,6 +79,16 @@ export function DocumentViewerPage() {
       },
       { replace: true, state: location.state },
     )
+  }
+
+  const toggleChunkInspector = () => {
+    if (highlightChunkIndex === null) {
+      // No chunk selected yet: jump to the first chunk and open the inspector
+      navigateToChunk(0)
+      setShowChunkInspector(true)
+    } else {
+      setShowChunkInspector((prev) => !prev)
+    }
   }
 
   const handleDelete = async () => {
@@ -132,14 +143,57 @@ export function DocumentViewerPage() {
   return (
     <MainPanel>
       <div className="flex-1 overflow-y-auto">
-        <DocumentViewerHeader
-          document={document}
-          backToSearchUrl={backToSearchUrl}
-          backToSearchState={backState}
-          highlightChunkIndex={highlightChunkIndex}
-          onNavigateChunk={navigateToChunk}
-          onDelete={handleDelete}
-        />
+        <div className="sticky top-0 z-10 bg-background">
+          <DocumentViewerHeader
+            document={document}
+            backToSearchUrl={backToSearchUrl}
+            backToSearchState={backState}
+            highlightChunkIndex={highlightChunkIndex}
+            onNavigateChunk={navigateToChunk}
+            onDelete={handleDelete}
+            showChunkInspector={showChunkInspector}
+            onToggleChunkInspector={toggleChunkInspector}
+          />
+
+          {document.status === 'error' && document.error && (
+            <div className="border-b border-border bg-muted/30">
+              <div className="max-w-5xl mx-auto px-6 py-3">
+                <p className="text-sm font-semibold text-destructive">
+                  Document processing failed
+                </p>
+                <p className="mt-1 text-sm text-muted-foreground font-mono bg-muted border border-border rounded p-2 break-words">
+                  {document.error}
+                </p>
+              </div>
+            </div>
+          )}
+
+          {showChunkInspector && highlightChunkIndex !== null && (
+            <div className="border-b border-border bg-muted/30">
+              <div className="max-w-5xl mx-auto px-6 py-4">
+                <div className="mb-2 flex items-center gap-2">
+                  <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                    Chunk {highlightChunkIndex} — Chunk text
+                  </span>
+                  {chunk && chunk.sectionPath.length > 0 && (
+                    <span className="text-xs text-muted-foreground">
+                      ({chunk.sectionPath.join(' › ')})
+                    </span>
+                  )}
+                </div>
+                {chunk ? (
+                  <pre className="font-mono text-xs bg-background border border-border rounded p-3 overflow-x-auto whitespace-pre-wrap break-words max-h-96 overflow-y-auto">
+                    {chunk.searchText}
+                  </pre>
+                ) : (
+                  <div className="text-sm text-muted-foreground italic">
+                    No chunk data available
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
 
         <div className="max-w-5xl mx-auto px-6 py-6">
           <div className="font-mono text-sm">
@@ -154,7 +208,13 @@ export function DocumentViewerPage() {
             ) : (
               <div className="text-center text-muted-foreground">
                 {document.status === 'error'
-                  ? 'Document processing failed'
+                  ? // The stored error message (if any) is shown in the banner
+                    // above; the generic fallback only applies when none exists.
+                    !document.error && (
+                      <p className="font-semibold text-destructive">
+                        Document processing failed
+                      </p>
+                    )
                   : 'Document is being processed...'}
               </div>
             )}

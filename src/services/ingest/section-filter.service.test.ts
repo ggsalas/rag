@@ -118,6 +118,38 @@ Text.
     expect(out).not.toContain('Reference one')
   })
 
+  it('handles GFM tables without throwing and preserves them', () => {
+    // Regression: stringify pipeline was missing remarkGfm, so table nodes
+    // threw "Cannot handle unknown node `table`" during PDF ingestion.
+    const input = `# Report
+
+## Metrics
+
+| Name | Value |
+| --- | --- |
+| Precision | 0.92 |
+| Recall | 0.87 |
+
+## References
+
+1. Author A, "Title", 2023`
+
+    let out = ''
+    expect(() => {
+      out = filterBoilerplateSections(input)
+    }).not.toThrow()
+
+    // Table preserved (serialized compactly: tableCellPadding disabled)
+    expect(out).toContain('Metrics')
+    expect(out).toContain('|Name|Value|')
+    expect(out).toContain('|Precision|0.92|')
+    expect(out).toContain('|Recall|0.87|')
+
+    // Boilerplate section still removed
+    expect(out).not.toContain('References')
+    expect(out).not.toContain('Author A')
+  })
+
   it('removes entire subsection tree under boilerplate heading', () => {
     const input = `# Main
 
@@ -255,15 +287,16 @@ Content.
 
   it('generic heuristic removes unknown boilerplate-like section when enabled', () => {
     // Create a section that matches all heuristic criteria:
-    // - Near end (last 30%)
+    // - Near end (last 50%)
     // - At least 3 content blocks (list items count)
     // - >=70% blocks contain links
     // - At least 2 list items
+    // - At least 6 actual link nodes recursively
     const input = `# Main Document
 
 This is the main content of the document with substantial text.
 More paragraphs here to push the custom section to the end.
-Even more content to ensure we're in the last 30%.
+Even more content to ensure we're in the last 50%.
 Additional filler text.
 More filler.
 Even more filler.
@@ -281,7 +314,9 @@ Final final filler.
 - [Resource 1](https://example.com/1)
 - [Resource 2](https://example.com/2)
 - [Resource 3](https://example.com/3)
-- [Resource 4](https://example.com/4)`
+- [Resource 4](https://example.com/4)
+- [Resource 5](https://example.com/5)
+- [Resource 6](https://example.com/6)`
 
     const out = filterBoilerplateSections(input, { enableHeuristic: true })
     // Should be removed by heuristic
@@ -389,15 +424,166 @@ Last line of filler.
 
 - [Link 1](url1)
 - [Link 2](url2)
+
 Some text without a link.
 More text without a link.
 Even more text.
+
 - [Link 3](url3)`
 
     const out = filterBoilerplateSections(input, { enableHeuristic: true })
     // Should NOT be removed - less than 70% of blocks contain links
     expect(out).toContain('Mixed Section')
     expect(out).toContain('text without a link')
+  })
+
+  it('removes "References [edit]" (Wikipedia-style heading)', () => {
+    const input = `# Article
+
+Main content here.
+
+## References [edit]
+
+1. Author A, "Title", 2023
+2. Author B, "Another Title", 2024`
+
+    const out = filterBoilerplateSections(input)
+    expect(out).toContain('Article')
+    expect(out).toContain('Main content')
+    expect(out).not.toContain('References')
+    expect(out).not.toContain('Author A')
+  })
+
+  it('removes "Further reading {#custom-id}" (heading with attribute)', () => {
+    const input = `# Article
+
+Main content here.
+
+## Further reading {#further-reading}
+
+- Book one
+- Book two`
+
+    const out = filterBoilerplateSections(input)
+    expect(out).toContain('Article')
+    expect(out).toContain('Main content')
+    expect(out).not.toContain('Further reading')
+    expect(out).not.toContain('Book one')
+  })
+
+  it('removes "External links [edit]" (combined suffix)', () => {
+    const input = `# Article
+
+Main content.
+
+### External links [edit]
+
+- [Link 1](url)
+- [Link 2](url)`
+
+    const out = filterBoilerplateSections(input)
+    expect(out).toContain('Article')
+    expect(out).toContain('Main content')
+    expect(out).not.toContain('External links')
+    expect(out).not.toContain('Link 1')
+  })
+
+  it('removes "See also {#see-also}" (attribute block)', () => {
+    const input = `# Article
+
+Content here.
+
+## See also {#see-also .section}
+
+- [Related](link)`
+
+    const out = filterBoilerplateSections(input)
+    expect(out).toContain('Article')
+    expect(out).not.toContain('See also')
+  })
+
+  it('preserves non-boilerplate headings with [edit] suffix', () => {
+    const input = `# Article
+
+## History [edit]
+
+Historical content.
+
+## Legacy [edit]
+
+Legacy content.`
+
+    const out = filterBoilerplateSections(input)
+    expect(out).toContain('History')
+    expect(out).toContain('Historical content')
+    expect(out).toContain('Legacy')
+    expect(out).toContain('Legacy content')
+  })
+
+  it('generic heuristic preserves meaningful paragraph with a few links (Designed by case)', () => {
+    // A paragraph mentioning names with links (e.g. "Designed by Brendan Eich
+    // at Netscape, standardized as ECMAScript") has <6 total links and must
+    // NOT be removed even when the heuristic is enabled.
+    const input = `# JavaScript
+
+JavaScript is a high-level programming language.
+
+## History
+
+JavaScript was designed by [Brendan Eich](https://example.com/eich) in 1995
+while working at [Netscape](https://example.com/netscape). It was later
+standardized as [ECMAScript](https://example.com/ecma) by Ecma International.
+
+## Standards
+
+The language continues to evolve through the [TC39](https://example.com/tc39)
+committee with proposals reviewed at [regular meetings](https://example.com/meetings).`
+
+    const out = filterBoilerplateSections(input, { enableHeuristic: true })
+    // Should preserve everything — only 5 links total (< 6 threshold)
+    expect(out).toContain('JavaScript')
+    expect(out).toContain('Brendan Eich')
+    expect(out).toContain('Netscape')
+    expect(out).toContain('ECMAScript')
+    expect(out).toContain('History')
+    expect(out).toContain('Standards')
+  })
+
+  it('generic heuristic removes unknown reference-like section with >=6 linked list items', () => {
+    // An unknown heading near the end with >=6 linked list items meets all
+    // heuristic criteria and should be removed when the heuristic is enabled.
+    const input = `# Main Document
+
+This is the main content of the document with substantial text.
+More paragraphs here to push the custom section to the end.
+Even more content to ensure we're in the last 50%.
+Additional filler text.
+More filler.
+Even more filler.
+Lots of filler.
+So much filler.
+Final filler paragraph.
+Even more filler to be safe.
+Another filler line.
+Yet another one.
+One more for good measure.
+Final final filler.
+
+## Further Resources
+
+- [Resource 1](https://example.com/1)
+- [Resource 2](https://example.com/2)
+- [Resource 3](https://example.com/3)
+- [Resource 4](https://example.com/4)
+- [Resource 5](https://example.com/5)
+- [Resource 6](https://example.com/6)`
+
+    const out = filterBoilerplateSections(input, { enableHeuristic: true })
+    // Should be removed by heuristic (6 links, near end, list-heavy)
+    expect(out).toContain('Main Document')
+    expect(out).toContain('main content')
+    expect(out).not.toContain('Further Resources')
+    expect(out).not.toContain('Resource 1')
   })
 
   it('handles realistic Wikipedia-style document', () => {
