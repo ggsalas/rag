@@ -9,6 +9,9 @@ export interface VectorSearchResult {
   documentId: string
   documentName: string
   text: string
+  searchText: string
+  sectionPath: string[]
+  headingText: string
   score: number
   chunkIndex: number
 }
@@ -23,6 +26,9 @@ async function createIndex(libraryId: string): Promise<AnyOrama> {
       documentId: 'string',
       documentName: 'string',
       text: 'string',
+      searchText: 'string',
+      sectionPath: 'string[]',
+      headingText: 'string',
       embedding: `vector[${EMBEDDING_DIMENSIONS}]`,
       chunkIndex: 'number',
     } as const,
@@ -50,6 +56,9 @@ export async function insertChunks(
       documentId: chunk.documentId,
       documentName: chunk.documentName,
       text: chunk.text,
+      searchText: chunk.searchText,
+      sectionPath: chunk.sectionPath,
+      headingText: chunk.headingText,
       embedding: chunk.embedding,
       chunkIndex: chunk.chunkIndex,
     })
@@ -71,7 +80,7 @@ export async function searchHybrid(
     mode: 'hybrid',
     term,
     vector: { value: embedding, property: 'embedding' },
-    properties: ['text'],
+    properties: ['searchText', 'headingText'],
     limit: topK ?? DEFAULT_MAX_RESULTS,
     includeVectors: false,
     similarity: 0.0,
@@ -83,6 +92,9 @@ export async function searchHybrid(
     documentId: hit.document.documentId as string,
     documentName: hit.document.documentName as string,
     text: hit.document.text as string,
+    searchText: hit.document.searchText as string,
+    sectionPath: (hit.document.sectionPath as string[]) ?? [],
+    headingText: (hit.document.headingText as string) ?? '',
     score: hit.score,
     chunkIndex: hit.document.chunkIndex as number,
   }))
@@ -110,6 +122,9 @@ export async function searchByVector(
     documentId: hit.document.documentId as string,
     documentName: hit.document.documentName as string,
     text: hit.document.text as string,
+    searchText: hit.document.searchText as string,
+    sectionPath: (hit.document.sectionPath as string[]) ?? [],
+    headingText: (hit.document.headingText as string) ?? '',
     score: hit.score,
     chunkIndex: hit.document.chunkIndex as number,
   }))

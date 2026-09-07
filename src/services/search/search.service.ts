@@ -29,6 +29,9 @@ export async function search(
     documentId: r.documentId,
     documentName: r.documentName,
     text: r.text,
+    searchText: r.searchText,
+    sectionPath: r.sectionPath,
+    headingText: r.headingText,
     score: r.score,
     chunkIndex: r.chunkIndex,
   }))

@@ -18,6 +18,9 @@ function makeChunk(overrides: Partial<Chunk> = {}): Chunk {
     documentName: 'test.pdf',
     chunkIndex: 0,
     text: 'sample text',
+    searchText: 'sample text',
+    sectionPath: [],
+    headingText: '',
     embedding: Array(384).fill(0.1),
     ...overrides,
   }

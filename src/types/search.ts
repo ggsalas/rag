@@ -12,7 +12,14 @@ export type SearchResult = {
   chunkId: string
   documentId: string
   documentName: string
+  /** Sanitized Markdown text for display */
   text: string
+  /** Plain text used for retrieval */
+  searchText: string
+  /** Heading hierarchy path */
+  sectionPath: string[]
+  /** Immediate parent heading */
+  headingText: string
   score: number
   chunkIndex: number
 }
