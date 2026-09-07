@@ -8,6 +8,8 @@ import type { SearchResult } from '@/types/search'
 import {
   LLM_MODEL_ID,
   LLM_CONTEXT_CHUNKS,
+  LLM_CONTEXT_BUDGET_CHARS,
+  LLM_CONTEXT_CHUNK_MAX_CHARS,
   LLM_MAX_TOKENS,
 } from '@/lib/constants'
 
@@ -40,6 +42,98 @@ const state: LlmModuleState = ((
   isRunning: false,
 })
 
+/** Result of {@link buildContext}: the assembled prompt context and matching citations. */
+export interface BuildContextResult {
+  /** Plain-text context block with citation labels like `[1] …`. */
+  context: string
+  /** Citations for the chunks that fit within the budget, in input order. */
+  citations: LLMCitation[]
+}
+
+/**
+ * Builds the LLM context string and citation list from search results.
+ *
+ * - Uses each result's `searchText` (plain text) rather than its Markdown `text`,
+ *   so partial Markdown cannot leak into the prompt.
+ * - Truncates each chunk to the per-chunk character budget.
+ * - Stops adding chunks once the total character budget is reached.
+ * - Preserves input order; citation numbers are 1-based and sequential for
+ *   the chunks that actually fit.
+ *
+ * Pure and deterministic — safe to unit-test.
+ */
+export function buildContext(
+  results: SearchResult[],
+  options: {
+    totalBudget?: number
+    chunkMax?: number
+  } = {},
+): BuildContextResult {
+  const totalBudget = options.totalBudget ?? LLM_CONTEXT_BUDGET_CHARS
+  const chunkMax = options.chunkMax ?? LLM_CONTEXT_CHUNK_MAX_CHARS
+
+  const citations: LLMCitation[] = []
+  const parts: string[] = []
+  let total = 0
+
+  for (const r of results) {
+    const raw = r.searchText ?? ''
+    const truncated = raw.length > chunkMax ? raw.slice(0, chunkMax) : raw
+    const piece = `[${citations.length + 1}] ${truncated}`
+    // Account for the "\n\n" separator between pieces.
+    const additional = parts.length === 0 ? piece.length : piece.length + 2
+    if (total + additional > totalBudget) break
+
+    citations.push({
+      index: citations.length + 1,
+      chunkId: r.chunkId,
+      documentId: r.documentId,
+      documentName: r.documentName,
+      chunkIndex: r.chunkIndex,
+    })
+    parts.push(piece)
+    total += additional
+  }
+
+  return { context: parts.join('\n\n'), citations }
+}
+
+/**
+ * Returns true when the error message looks like a WebGPU runtime failure
+ * (device/buffer/context loss, mapAsync errors, a disposed engine object,
+ * or an invalidated instance reference — e.g. a stale engine surviving HMR
+ * or a failed reload). These indicate the engine is in a broken state and
+ * should be discarded so it can be reloaded.
+ */
+function isGpuRuntimeError(message: string): boolean {
+  const m = message.toLowerCase()
+  return (
+    m.includes('mapasync') ||
+    m.includes('gpubuffer') ||
+    m.includes('unmapped') ||
+    m.includes('device lost') ||
+    m.includes('device_lost') ||
+    m.includes('context lost') ||
+    m.includes('context_lost') ||
+    m.includes('been disposed') ||
+    // WebGPU validation: an external Instance reference (bind group, pipeline
+    // layout, etc.) has been destroyed while still in use. Treated like a
+    // disposed-object error — the engine is unusable and must be reloaded.
+    m.includes('instance reference')
+  )
+}
+
+/** Returns true when the error message indicates the LLM context window was exceeded. */
+function isContextWindowError(message: string): boolean {
+  const m = message.toLowerCase()
+  return (
+    m.includes('context window') ||
+    m.includes('context length') ||
+    m.includes('maximum context') ||
+    m.includes('too many tokens')
+  )
+}
+
 /** Loads the LLM model (runs on the main thread via WebGPU — no worker needed) */
 export async function initLLMModel(
   onProgress?: LLMProgressCallback,
@@ -65,12 +159,23 @@ export async function initLLMModel(
     ),
   }
 
-  state.engine = await CreateMLCEngine(LLM_MODEL_ID, {
-    appConfig,
-    initProgressCallback: (report: InitProgressReport) => {
-      onProgress?.(report.progress, report.text)
-    },
-  })
+  try {
+    state.engine = await CreateMLCEngine(LLM_MODEL_ID, {
+      appConfig,
+      initProgressCallback: (report: InitProgressReport) => {
+        onProgress?.(report.progress, report.text)
+      },
+    })
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    if (isGpuRuntimeError(msg)) {
+      state.engine = null
+      throw new Error(
+        'GPU error while loading the AI model. Try reloading the page, or check your browser\'s hardware acceleration settings.',
+      )
+    }
+    throw err
+  }
 }
 
 /** Interrupts any in-progress generation. Safe to call when idle. */
@@ -88,17 +193,10 @@ export async function generateAnswer(
   if (!state.engine) throw new Error('LLM model not loaded')
   const engine = state.engine
 
+  // Hard cap on the number of results considered (defensive); the character
+  // budget in buildContext is usually the tighter constraint.
   const topResults = results.slice(0, LLM_CONTEXT_CHUNKS)
-
-  const citations: LLMCitation[] = topResults.map((r, i) => ({
-    index: i + 1,
-    chunkId: r.chunkId,
-    documentId: r.documentId,
-    documentName: r.documentName,
-    chunkIndex: r.chunkIndex,
-  }))
-
-  const context = topResults.map((r, i) => `[${i + 1}] ${r.text}`).join('\n\n')
+  const { context, citations } = buildContext(topResults)
 
   const messages = [
     {
@@ -124,7 +222,24 @@ export async function generateAnswer(
     onToken('', true)
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
-    if (msg.toLowerCase().includes('interrupt')) return citations
+    const lower = msg.toLowerCase()
+    // User-initiated abort: return whatever citations we built.
+    if (lower.includes('interrupt')) return citations
+    // WebGPU runtime failure: discard the broken engine so the next attempt
+    // reloads it, and surface a concise actionable message.
+    if (isGpuRuntimeError(msg)) {
+      state.engine = null
+      throw new Error(
+        'GPU error during answer generation. The AI model has been reset — please try again. If this persists, reload the page or check your browser\'s hardware acceleration settings.',
+      )
+    }
+    // Model refused the prompt because it exceeded its context window.
+    if (isContextWindowError(msg)) {
+      throw new Error(
+        'The answer context exceeded the model\'s limit. Try a shorter query or fewer results.',
+      )
+    }
+    // Anything else is unrelated — rethrow untouched so callers can handle it.
     throw err
   } finally {
     state.isRunning = false

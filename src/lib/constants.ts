@@ -15,3 +15,11 @@ export const LLM_MODEL_NAME = 'Llama 3.2 1B'
 export const LLM_MODEL_DOWNLOAD_SIZE = '~880 MB'
 export const LLM_CONTEXT_CHUNKS = 10
 export const LLM_MAX_TOKENS = 512
+/**
+ * Maximum total characters for all context chunks combined sent to the LLM.
+ * The model has a 4096-token context window; at ~4 chars/token for plain text,
+ * this leaves room for the system prompt, query, and output tokens (LLM_MAX_TOKENS).
+ */
+export const LLM_CONTEXT_BUDGET_CHARS = 10_000
+/** Maximum characters contributed by a single chunk to the LLM context. */
+export const LLM_CONTEXT_CHUNK_MAX_CHARS = 1_500
