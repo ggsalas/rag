@@ -20,12 +20,14 @@ import type { SearchPreferences } from '@/types/library'
 import type {
   SavedSearchState,
   PipelineOptions,
+  SearchPreset,
 } from '@/types/search'
 import {
   createSearchStore,
   type SearchStore,
 } from '@/hooks/useSearchStore'
 import { useSearchPreferences } from '@/hooks/useSearchPreferences'
+import { SEARCH_PRESETS } from '@/lib/constants'
 import { SearchBar } from '@/components/search/SearchBar'
 import { ResultList } from '@/components/search/ResultList'
 import { LLMAnswer } from '@/components/search/LLMAnswer'
@@ -184,10 +186,10 @@ export function SearchPage() {
   )
 
   // Pref changes: update local + persist to IndexedDB, re-search if active query
-  const handleSetHybridWeights = useCallback(
-    (weights: typeof prefs.hybridWeights) => {
-      prefs.setHybridWeights(weights)
-      reSearchWithOverride({ hybridWeights: weights })
+  const handleSetPreset = useCallback(
+    (preset: SearchPreset) => {
+      prefs.setSearchPreset(preset)
+      reSearchWithOverride({ hybridWeights: SEARCH_PRESETS[preset] })
     },
     [prefs, reSearchWithOverride],
   )
@@ -315,8 +317,8 @@ export function SearchPage() {
           isSearching={isSearching}
           embeddingStatus={embeddingStatus}
           initialQuery={urlQuery}
-          hybridWeights={prefs.hybridWeights}
-          onWeightsChange={handleSetHybridWeights}
+          searchPreset={prefs.searchPreset}
+          onPresetChange={handleSetPreset}
           maxResults={prefs.maxResults}
           onMaxResultsChange={handleSetMaxResults}
           minScore={prefs.minScore}

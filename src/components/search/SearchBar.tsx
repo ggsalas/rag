@@ -1,22 +1,16 @@
-import {
-  useState,
-  useRef,
-  useEffect,
-  type FormEvent,
-  type ChangeEvent,
-} from 'react'
+import { useState, useRef, useEffect, type FormEvent } from 'react'
 import { X, Sparkles } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import type { ModelStatus } from '@/store/app.store'
-import type { HybridWeights } from '@/types/search'
+import type { SearchPreset } from '@/types/search'
 
 interface SearchBarProps {
   onSearch: (query: string) => void
   isSearching: boolean
   embeddingStatus: ModelStatus
   initialQuery?: string
-  hybridWeights?: HybridWeights
-  onWeightsChange?: (weights: HybridWeights) => void
+  searchPreset?: SearchPreset
+  onPresetChange?: (preset: SearchPreset) => void
   maxResults?: number
   onMaxResultsChange?: (n: number) => void
   minScore?: number
@@ -32,8 +26,8 @@ export function SearchBar({
   onSearch,
   embeddingStatus,
   initialQuery = '',
-  hybridWeights,
-  onWeightsChange,
+  searchPreset,
+  onPresetChange,
   maxResults,
   onMaxResultsChange,
   minScore,
@@ -45,16 +39,11 @@ export function SearchBar({
   onLlmMaxTokensChange,
 }: SearchBarProps) {
   const [inputValue, setInputValue] = useState(initialQuery)
-  const [localWeight, setLocalWeight] = useState(hybridWeights?.vector ?? 0.5)
   const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     if (!notFocused) inputRef.current?.focus({ preventScroll: true })
   }, [notFocused])
-
-  useEffect(() => {
-    if (hybridWeights !== undefined) setLocalWeight(hybridWeights.vector)
-  }, [hybridWeights?.vector])
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault()
@@ -68,20 +57,11 @@ export function SearchBar({
     inputRef.current?.focus()
   }
 
-  const handleSliderChange = (e: ChangeEvent<HTMLInputElement>) => {
-    setLocalWeight(parseFloat(e.target.value))
-  }
-
-  const handleSliderRelease = () => {
-    onWeightsChange?.({ vector: localWeight, text: 1 - localWeight })
-  }
-
   const isDisabled = embeddingStatus !== 'ready'
   const hasText = inputValue.trim().length > 0
-  const showWeights =
-    hybridWeights !== undefined && onWeightsChange !== undefined
+  const showPreset = searchPreset !== undefined && onPresetChange !== undefined
   const showConfig =
-    showWeights ||
+    showPreset ||
     (maxResults !== undefined && minScore !== undefined) ||
     !!onAiModeToggle
 
@@ -186,26 +166,44 @@ export function SearchBar({
                       </>
                     )}
 
-                    {showWeights && (
+                    {showPreset && (
                       <>
+                        <div className="w-px h-4 bg-border mx-1" />
                         <span className="text-xs text-muted-foreground whitespace-nowrap">
-                          Keyword
+                          Mode
                         </span>
-                        <input
-                          type="range"
-                          min="0"
-                          max="1"
-                          step="0.1"
-                          value={localWeight}
-                          onChange={handleSliderChange}
-                          onMouseUp={handleSliderRelease}
-                          onTouchEnd={handleSliderRelease}
-                          disabled={isDisabled}
-                          className="flex-1 min-w-20 h-1.5 accent-primary cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                        />
-                        <span className="text-xs text-muted-foreground whitespace-nowrap">
-                          Semantic
-                        </span>
+                        <div
+                          className="inline-flex"
+                          role="group"
+                          aria-label="Search mode"
+                        >
+                          <button
+                            type="button"
+                            onClick={() => onPresetChange('balanced')}
+                            disabled={isDisabled}
+                            className={`px-2 py-0.5 text-xs rounded-l rounded-r-none border transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                              searchPreset === 'balanced'
+                                ? 'bg-primary text-primary-foreground border-primary'
+                                : 'bg-background text-muted-foreground border-border hover:text-foreground'
+                            }`}
+                            title="Balanced: combines exact keyword matching with semantic understanding"
+                          >
+                            Balanced
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => onPresetChange('semantic')}
+                            disabled={isDisabled}
+                            className={`px-2 py-0.5 text-xs rounded-r rounded-l-none border border-l-0 transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                              searchPreset === 'semantic'
+                                ? 'bg-primary text-primary-foreground border-primary'
+                                : 'bg-background text-muted-foreground border-border hover:text-foreground'
+                            }`}
+                            title="Semantic: prioritizes meaning over exact words (better for conceptual queries)"
+                          >
+                            Semantic
+                          </button>
+                        </div>
                       </>
                     )}
 

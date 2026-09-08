@@ -1,7 +1,10 @@
-import type { HybridWeights } from './search'
+import type { HybridWeights, SearchPreset } from './search'
 
 export type SearchPreferences = {
-  hybridWeights: HybridWeights
+  /** Current search preset (preferred) */
+  searchPreset?: SearchPreset
+  /** Legacy hybrid weights — kept in sync with searchPreset for backward compatibility */
+  hybridWeights?: HybridWeights
   maxResults: number
   minScore: number
   llmMaxTokens?: number

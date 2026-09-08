@@ -8,6 +8,9 @@ export type HybridWeights = {
   vector: number
 }
 
+/** Predefined search mode presets replacing the free-form weight slider */
+export type SearchPreset = 'balanced' | 'semantic'
+
 export type SearchResult = {
   chunkId: string
   documentId: string

@@ -1,8 +1,23 @@
+import type { SearchPreset, HybridWeights } from '@/types/search'
+
 export const CHUNK_SIZE = 500
 export const CHUNK_OVERLAP = 100
-export const DEFAULT_MAX_RESULTS = 10
-export const DEFAULT_MIN_SCORE = 70
+export const DEFAULT_MAX_RESULTS = 6
+export const DEFAULT_MIN_SCORE = 75
 export const DEFAULT_HYBRID_WEIGHTS = { text: 0.5, vector: 0.5 }
+/** Default search preset for new libraries */
+export const DEFAULT_SEARCH_PRESET: SearchPreset = 'balanced'
+/**
+ * Minimum absolute hybrid score a result must reach to be returned.
+ * Prevents surfacing the "best of irrelevant" when all matches are poor.
+ * Applied in addition to the user-configurable relative minScore threshold.
+ */
+export const MIN_ABSOLUTE_SCORE = 0.5
+/** Maps each SearchPreset to its underlying hybrid weights for Orama */
+export const SEARCH_PRESETS: Record<SearchPreset, HybridWeights> = {
+  balanced: { text: 0.5, vector: 0.5 },
+  semantic: { text: 0.1, vector: 0.9 },
+}
 export const EMBEDDING_MODEL_NAME = 'Xenova/all-MiniLM-L6-v2'
 /** User-facing embedding model name and approximate download size (shown in the loading toast). */
 export const EMBEDDING_MODEL_DISPLAY_NAME = 'MiniLM-L6-v2'
