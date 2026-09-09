@@ -1,17 +1,20 @@
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback, useRef, useMemo } from 'react'
 import * as libraryService from '@/services/library.service'
 import {
   DEFAULT_MAX_RESULTS,
   DEFAULT_MIN_SCORE,
-  DEFAULT_HYBRID_WEIGHTS,
+  DEFAULT_SEARCH_PRESET,
+  SEARCH_PRESETS,
   LLM_MAX_TOKENS,
 } from '@/lib/constants'
-import type { HybridWeights } from '@/types/search'
+import type { SearchPreset, HybridWeights } from '@/types/search'
 import type { SearchPreferences } from '@/types/library'
 
 export interface SearchPreferencesAPI {
+  searchPreset: SearchPreset
+  setSearchPreset: (preset: SearchPreset) => void
+  /** Derived from searchPreset — read-only for pipeline compatibility */
   hybridWeights: HybridWeights
-  setHybridWeights: (weights: HybridWeights) => void
   maxResults: number
   setMaxResults: (n: number) => void
   minScore: number
@@ -23,6 +26,18 @@ export interface SearchPreferencesAPI {
 }
 
 /**
+ * Infers the closest SearchPreset from legacy hybrid weights.
+ * - 50/50 → balanced
+ * - vector-dominant (vector >= 0.7) → semantic
+ * - otherwise → balanced (default)
+ */
+export function inferPresetFromWeights(weights: HybridWeights): SearchPreset {
+  if (weights.text === 0.5 && weights.vector === 0.5) return 'balanced'
+  if (weights.vector >= 0.7) return 'semantic'
+  return 'balanced'
+}
+
+/**
  * Manages search preferences for a library.
  * Seeded from the route loader (no post-mount fetch).
  * Each setter updates local state immediately and persists to IndexedDB fire-and-forget.
@@ -31,9 +46,14 @@ export function useSearchPreferences(
   libraryId: string,
   initialPrefs?: SearchPreferences | null,
 ): SearchPreferencesAPI {
-  const [hybridWeights, setHybridWeightsState] = useState<HybridWeights>(
-    initialPrefs?.hybridWeights ?? DEFAULT_HYBRID_WEIGHTS,
-  )
+  // Infer initial preset: use explicit searchPreset if present, else infer from legacy weights
+  const initialPreset = useMemo(() => {
+    if (initialPrefs?.searchPreset) return initialPrefs.searchPreset
+    if (initialPrefs?.hybridWeights) return inferPresetFromWeights(initialPrefs.hybridWeights)
+    return DEFAULT_SEARCH_PRESET
+  }, [initialPrefs?.searchPreset, initialPrefs?.hybridWeights])
+
+  const [searchPreset, setSearchPresetState] = useState<SearchPreset>(initialPreset)
   const [maxResults, setMaxResultsState] = useState(
     initialPrefs?.maxResults ?? DEFAULT_MAX_RESULTS,
   )
@@ -47,9 +67,26 @@ export function useSearchPreferences(
     initialPrefs?.isAiMode ?? false,
   )
 
+  // Derive hybrid weights from preset (read-only)
+  const hybridWeights = SEARCH_PRESETS[searchPreset]
+
   // Always-current snapshot of all prefs for building the full object on persist
-  const prefsRef = useRef({ hybridWeights, maxResults, minScore, llmMaxTokens, isAiMode })
-  prefsRef.current = { hybridWeights, maxResults, minScore, llmMaxTokens, isAiMode }
+  const prefsRef = useRef({
+    searchPreset,
+    hybridWeights,
+    maxResults,
+    minScore,
+    llmMaxTokens,
+    isAiMode,
+  })
+  prefsRef.current = {
+    searchPreset,
+    hybridWeights,
+    maxResults,
+    minScore,
+    llmMaxTokens,
+    isAiMode,
+  }
 
   const persist = useCallback(
     (partial: Partial<SearchPreferences>) => {
@@ -61,10 +98,11 @@ export function useSearchPreferences(
     [libraryId],
   )
 
-  const setHybridWeights = useCallback(
-    (weights: HybridWeights) => {
-      setHybridWeightsState(weights)
-      persist({ hybridWeights: weights })
+  const setSearchPreset = useCallback(
+    (preset: SearchPreset) => {
+      setSearchPresetState(preset)
+      // Persist both preset and derived weights for backward compatibility
+      persist({ searchPreset: preset, hybridWeights: SEARCH_PRESETS[preset] })
     },
     [persist],
   )
@@ -102,8 +140,9 @@ export function useSearchPreferences(
   )
 
   return {
+    searchPreset,
+    setSearchPreset,
     hybridWeights,
-    setHybridWeights,
     maxResults,
     setMaxResults,
     minScore,

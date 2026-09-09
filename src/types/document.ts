@@ -26,7 +26,14 @@ export type Chunk = {
   documentId: string
   documentName: string
   chunkIndex: number
+  /** Sanitized Markdown text for display and highlighting */
   text: string
+  /** Plain text representation for retrieval (no Markdown syntax) */
+  searchText: string
+  /** Heading hierarchy path (e.g. ["Introduction", "Methods"]) */
+  sectionPath: string[]
+  /** Immediate parent heading text */
+  headingText: string
   embedding: number[]
 }
 

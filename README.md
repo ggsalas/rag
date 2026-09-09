@@ -68,3 +68,7 @@ npm test
 ## Architecture
 
 The codebase follows a layered architecture with strict dependency rules. See [AGENTS.md](./AGENTS.md) for details.
+
+See [INGEST.md](./INGEST.md) for the document ingestion pipeline.
+
+See [TODO.md](./TODO.md) for the improvement roadmap.

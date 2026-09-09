@@ -78,7 +78,9 @@ describe('sanitize (conservative)', () => {
     expect(out).toContain('|a|b|')
     expect(out).toContain('|c|d|')
     // The all-blank row structure survives
-    expect(out.split('\n').filter((l) => l.includes('|')).length).toBeGreaterThanOrEqual(4)
+    expect(
+      out.split('\n').filter((l) => l.includes('|')).length,
+    ).toBeGreaterThanOrEqual(4)
   })
 
   it('collapses whitespace in regular text nodes', () => {
@@ -109,5 +111,103 @@ const x = 1
     const once = sanitize(input)
     const twice = sanitize(once)
     expect(twice).toBe(once)
+  })
+
+  it('preserves NBSP inside fenced code blocks', () => {
+    // NBSP (U+00A0) inside code blocks should NOT be converted to regular space
+    const input = '```js\nconst x = "foo bar"\n```'
+    const out = sanitize(input)
+    // The NBSP should be preserved verbatim inside the code block
+    expect(out).toContain('foo bar')
+  })
+
+  it('preserves ligatures inside fenced code blocks', () => {
+    // Ligature ﬁ (U+FB01) inside code blocks should NOT be normalized
+    const input = '```js\nconst ﬁle = "test"\n```'
+    const out = sanitize(input)
+    // The ligature should be preserved verbatim inside the code block
+    expect(out).toContain('ﬁle')
+  })
+
+  it('preserves tables with markdown links', () => {
+    const input = `| Column | Link |
+| --- | --- |
+| Data | [Example](https://example.com) |`
+    const out = sanitize(input)
+    expect(out).toContain('[Example](https://example.com)')
+    expect(out).toContain('|')
+  })
+
+  it('preserves nested bullet lists', () => {
+    const input = `- Item 1
+  - Subitem 1.1
+  - Subitem 1.2
+- Item 2`
+    const out = sanitize(input)
+    expect(out).toContain('- Item 1')
+    expect(out).toContain('- Subitem 1.1')
+    expect(out).toContain('- Subitem 1.2')
+    expect(out).toContain('- Item 2')
+  })
+
+  it('preserves realistic LiteParse PDF output structure', () => {
+    // Simulates typical LiteParse markdown output from a PDF
+    const input = `# Introduction
+
+This is the first paragraph with some **bold text** and a [link](https://example.com).
+
+## Methods
+
+We used the following approach:
+
+- Step one: data collection
+- Step two: processing
+  - Sub-step A
+  - Sub-step B
+- Step three: analysis
+
+## Results
+
+| Metric | Value | Notes |
+| --- | --- | --- |
+| Accuracy | 95% | See [details](https://example.com/details) |
+| Precision | 92% |  |
+
+### Code Example
+
+\`\`\`python
+def process(data):
+    return data.transform()
+\`\`\`
+
+## References
+
+1. Author A, "Title", 2023
+2. Author B, "Another Title", 2024`
+
+    const out = sanitize(input)
+
+    // Structure preserved
+    expect(out).toContain('# Introduction')
+    expect(out).toContain('## Methods')
+    expect(out).toContain('## Results')
+    expect(out).toContain('### Code Example')
+    expect(out).toContain('## References')
+
+    // Links preserved
+    expect(out).toContain('[link](https://example.com)')
+    expect(out).toContain('[details](https://example.com/details)')
+
+    // List structure preserved
+    expect(out).toContain('- Step one: data collection')
+    expect(out).toContain('- Sub-step A')
+
+    // Table preserved (compact format — no padding, by design)
+    expect(out).toContain('|Metric|Value|Notes|')
+    expect(out).toContain('Accuracy')
+
+    // Code block preserved
+    expect(out).toContain('```python')
+    expect(out).toContain('def process(data):')
   })
 })

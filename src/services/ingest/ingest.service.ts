@@ -2,6 +2,8 @@ import { generateId } from '@/lib/utils'
 import { parseFile } from './parser.service'
 import { chunkText, chunkMarkdown } from './chunking.service'
 import { sanitize } from './sanitize.service'
+import { filterMalformedLayoutBlocks } from './malformed-layout-filter.service'
+import { filterBoilerplateSections } from './section-filter.service'
 import { embedBatch } from '@/services/embedding/embedding.service'
 import { insertChunks } from '@/services/embedding/vector-store'
 import { db } from '@/infrastructure/db'
@@ -65,10 +67,30 @@ async function processDocument(
     // Sanitize before chunking to strip nav chrome, escape sequences, orphan URLs, etc.
     const cleanText = sanitize(parseResult.text)
 
+    // Filter boilerplate sections (References, Bibliography, etc.)
+    // Only applied to structured Markdown (PDF/MD), not plain text
+    const isStructuredMarkdown =
+      docMeta.type === 'pdf' ||
+      docMeta.name.endsWith('.md') ||
+      docMeta.name.endsWith('.markdown')
+
+    // Enable conservative heuristic for unknown boilerplate-like sections
+    // Named section filter (References, Bibliography, etc.) is the primary filter
+    //
+    // For structured Markdown, first drop malformed layout/sidebar blocks
+    // (consecutive heading runs + link-heavy/sidebar content emitted by
+    // LiteParse from Wikipedia-style infoboxes). Runs before the named
+    // boilerplate filter so sidebar noise doesn't leak into chunking.
+    const filteredText = isStructuredMarkdown
+      ? filterBoilerplateSections(filterMalformedLayoutBlocks(cleanText), {
+          enableHeuristic: true,
+        })
+      : cleanText
+
     await saveDocumentContent({
       documentId: docMeta.id,
       libraryId,
-      text: cleanText,
+      text: filteredText,
     })
 
     await updateDocumentStatus(docMeta.id, 'chunking')
@@ -76,13 +98,9 @@ async function processDocument(
 
     // PDFs return structured markdown from LiteParse, so they take the same
     // markdown path as native .md files. Plain-text formats use paragraph chunking.
-    const isStructuredMarkdown =
-      docMeta.type === 'pdf' ||
-      docMeta.name.endsWith('.md') ||
-      docMeta.name.endsWith('.markdown')
     const chunkDataList = isStructuredMarkdown
-      ? chunkMarkdown(cleanText)
-      : chunkText(cleanText)
+      ? chunkMarkdown(filteredText)
+      : chunkText(filteredText)
 
     if (chunkDataList.length === 0) {
       throw new Error('No text could be extracted from document')
@@ -91,7 +109,9 @@ async function processDocument(
     await updateDocumentStatus(docMeta.id, 'embedding')
     await updateProgress(docMeta.id, PROGRESS.EMBEDDING[0])
 
-    const texts = chunkDataList.map((c) => c.text)
+    // Build embedding text from section context + searchText
+    // This provides better semantic context for the embedding model
+    const texts = chunkDataList.map((c) => buildEmbeddingText(c))
     const embeddings = await embedBatch(texts, async (current, total) => {
       await updateProgress(
         docMeta.id,
@@ -106,6 +126,9 @@ async function processDocument(
       documentName: docMeta.name,
       chunkIndex: data.chunkIndex,
       text: data.text,
+      searchText: data.searchText,
+      sectionPath: data.sectionPath,
+      headingText: data.headingText,
       embedding: embeddings[i]!,
     }))
 
@@ -161,4 +184,26 @@ export async function ingestDocuments(
   }
 
   await waitForQueue()
+}
+
+/**
+ * Builds the text to embed for a chunk.
+ * Combines section context (heading path) with searchText for better semantic retrieval.
+ */
+function buildEmbeddingText(chunk: {
+  searchText: string
+  sectionPath: string[]
+  headingText: string
+}): string {
+  const parts: string[] = []
+
+  // Add section context (heading hierarchy)
+  if (chunk.sectionPath.length > 0) {
+    parts.push(chunk.sectionPath.join(' > '))
+  }
+
+  // Add the plain text content
+  parts.push(chunk.searchText)
+
+  return parts.join('\n')
 }

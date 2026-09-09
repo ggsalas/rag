@@ -1,7 +1,20 @@
 import { CHUNK_SIZE, CHUNK_OVERLAP } from '@/lib/constants'
+import { unified } from 'unified'
+import remarkParse from 'remark-parse'
+import remarkGfm from 'remark-gfm'
+import remarkStringify from 'remark-stringify'
+import type { Root, Heading, BlockContent, PhrasingContent } from 'mdast'
+import { markdownToSearchText } from './markdown-to-search-text.service'
 
 export interface ChunkData {
+  /** Sanitized Markdown text for display and highlighting */
   text: string
+  /** Plain text for retrieval (no Markdown syntax) */
+  searchText: string
+  /** Heading hierarchy path (e.g. ["Introduction", "Methods"]) */
+  sectionPath: string[]
+  /** Immediate parent heading text */
+  headingText: string
   chunkIndex: number
 }
 
@@ -10,7 +23,14 @@ export interface ChunkOptions {
   overlap?: number
 }
 
-/** Splits text into chunks with configurable size and overlap */
+/**
+ * Chunks plain text by paragraphs (no heading awareness).
+ * Used for .txt and .docx documents that lack Markdown structure.
+ *
+ * Oversized-unit policy: paragraphs are atomic. A paragraph that exceeds
+ * `size` is emitted as a single oversized chunk rather than being split,
+ * so sentences are never cut.
+ */
 export function chunkText(text: string, options?: ChunkOptions): ChunkData[] {
   const size = options?.size ?? CHUNK_SIZE
   const overlap = options?.overlap ?? CHUNK_OVERLAP
@@ -18,101 +38,272 @@ export function chunkText(text: string, options?: ChunkOptions): ChunkData[] {
 
   if (!text.trim()) return chunks
 
-  // Split by paragraphs first
-  const paragraphs = text.split(/\n\s*\n/)
-  let currentChunk = ''
+  // Split by blank-line paragraphs — each paragraph is an atomic unit
+  const paragraphs = text.split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean)
+
+  let currentUnits: string[] = []
+  let currentLen = 0
   let chunkIndex = 0
 
+  /** Join units into a chunk and push it */
+  const flush = () => {
+    if (currentUnits.length === 0) return
+    const joined = currentUnits.join('\n\n')
+    chunks.push({
+      text: joined,
+      searchText: markdownToSearchText(joined),
+      sectionPath: [],
+      headingText: '',
+      chunkIndex,
+    })
+    chunkIndex++
+  }
+
+  /** Pick trailing units from the previous chunk for overlap (whole units only) */
+  const computeOverlap = (prevUnits: string[]): string[] => {
+    if (overlap <= 0 || prevUnits.length === 0) return []
+    const overlapUnits: string[] = []
+    let total = 0
+    // Walk backwards to collect whole units that fit within overlap budget
+    for (let i = prevUnits.length - 1; i >= 0; i--) {
+      const addLen = overlapUnits.length === 0
+        ? prevUnits[i]!.length
+        : prevUnits[i]!.length + 2 // '\n\n' separator
+      if (total + addLen > overlap) break
+      overlapUnits.unshift(prevUnits[i]!)
+      total += addLen
+    }
+    return overlapUnits
+  }
+
   for (const paragraph of paragraphs) {
-    const trimmed = paragraph.trim()
-    if (!trimmed) continue
+    const sepLen = currentUnits.length > 0 ? 2 : 0 // '\n\n'
+    const newLen = currentLen + sepLen + paragraph.length
 
-    // If adding this paragraph exceeds size limit, close current chunk
-    if (
-      currentChunk.length + trimmed.length + 1 > size &&
-      currentChunk.length > 0
-    ) {
-      chunks.push({ text: currentChunk.trim(), chunkIndex })
-      chunkIndex++
-
-      // Overlap: keep the last `overlap` chars from the previous chunk
-      if (overlap > 0 && currentChunk.length > overlap) {
-        currentChunk = currentChunk.slice(-overlap) + ' ' + trimmed
-      } else {
-        currentChunk = trimmed
-      }
+    if (newLen > size && currentUnits.length > 0) {
+      // Flush current chunk, then start a new one with overlap
+      const prevUnits = currentUnits
+      flush()
+      const overlapUnits = computeOverlap(prevUnits)
+      currentUnits = [...overlapUnits, paragraph]
+      currentLen = currentUnits.join('\n\n').length
     } else {
-      currentChunk = currentChunk ? currentChunk + '\n\n' + trimmed : trimmed
-    }
-
-    // If a single paragraph exceeds size, split by sentences
-    while (currentChunk.length > size) {
-      const breakPoint = findBreakPoint(currentChunk, size)
-      chunks.push({
-        text: currentChunk.slice(0, breakPoint).trim(),
-        chunkIndex,
-      })
-      chunkIndex++
-
-      const remaining = currentChunk.slice(breakPoint - overlap).trim()
-      currentChunk = remaining
+      currentUnits.push(paragraph)
+      currentLen = newLen
     }
   }
 
-  if (currentChunk.trim()) {
-    chunks.push({ text: currentChunk.trim(), chunkIndex })
-  }
-
+  flush()
   return chunks
 }
 
 /**
- * Chunks markdown by heading sections. Each heading + its content becomes a chunk.
- * Sections that exceed the size limit are split further by paragraph.
+ * Chunks Markdown by heading sections with AST block-level packing.
+ *
+ * - Tracks heading hierarchy to build sectionPath for each chunk
+ * - Packs whole AST block units (paragraphs, lists, tables, code blocks, etc.)
+ *   into chunks; never slices serialized Markdown strings
+ * - This guarantees Markdown links and other inline syntax are never cut
+ * - Oversized-unit policy: a single block that exceeds `size` is emitted as
+ *   one oversized chunk rather than being split
+ * - Avoids orphan heading-only chunks
+ * - Every chunk gets the applicable section context
+ * - Sequential chunkIndex is preserved
  */
-export function chunkMarkdown(text: string, options?: ChunkOptions): ChunkData[] {
+export function chunkMarkdown(
+  text: string,
+  options?: ChunkOptions,
+): ChunkData[] {
   const size = options?.size ?? CHUNK_SIZE
   const overlap = options?.overlap ?? CHUNK_OVERLAP
+
+  if (!text.trim()) return []
+
+  const tree = unified().use(remarkParse).use(remarkGfm).parse(text)
+
+  // Build sections: each section has a heading stack and a list of content blocks
+  const sections = buildSections(tree)
+
+  // Convert sections to chunks
   const chunks: ChunkData[] = []
   let chunkIndex = 0
 
-  // Split into sections, keeping each heading attached to its content
-  const parts = text.split(/^(#{1,6} .+)$/m)
-  const sections: string[] = []
-
-  if (parts[0]?.trim()) sections.push(parts[0].trim())
-
-  for (let i = 1; i < parts.length; i += 2) {
-    const section = ((parts[i] ?? '') + '\n' + (parts[i + 1] ?? '')).trim()
-    if (section) sections.push(section)
-  }
-
   for (const section of sections) {
-    if (!section.trim()) continue
+    const sectionPath = section.headingStack.map((h) => h.text)
+    const headingText =
+      section.headingStack.length > 0
+        ? section.headingStack[section.headingStack.length - 1]!.text
+        : ''
 
-    if (section.length <= size) {
-      chunks.push({ text: section, chunkIndex })
+    if (section.blocks.length === 0) continue
+
+    // Serialize each block individually to get atomic Markdown units
+    const serializedUnits = section.blocks.map((block) => serializeBlocks([block]))
+
+    // Pack whole block units into chunks up to `size`
+    let currentUnits: string[] = []
+    let currentLen = 0
+
+    /** Join units into a chunk and push it */
+    const flush = () => {
+      if (currentUnits.length === 0) return
+      const joined = currentUnits.join('\n\n')
+      chunks.push({
+        text: joined,
+        searchText: markdownToSearchText(joined),
+        sectionPath,
+        headingText,
+        chunkIndex,
+      })
       chunkIndex++
-    } else {
-      // Section too long — fall back to paragraph chunking within the section
-      const subChunks = chunkText(section, { size, overlap })
-      for (const sub of subChunks) {
-        chunks.push({ text: sub.text, chunkIndex })
-        chunkIndex++
+    }
+
+    /** Pick trailing units from the previous chunk for overlap (whole units only) */
+    const computeOverlap = (prevUnits: string[]): string[] => {
+      if (overlap <= 0 || prevUnits.length === 0) return []
+      const overlapUnits: string[] = []
+      let total = 0
+      for (let i = prevUnits.length - 1; i >= 0; i--) {
+        const addLen = overlapUnits.length === 0
+          ? prevUnits[i]!.length
+          : prevUnits[i]!.length + 2 // '\n\n' separator
+        if (total + addLen > overlap) break
+        overlapUnits.unshift(prevUnits[i]!)
+        total += addLen
+      }
+      return overlapUnits
+    }
+
+    for (const unit of serializedUnits) {
+      if (!unit) continue
+
+      const sepLen = currentUnits.length > 0 ? 2 : 0 // '\n\n'
+      const newLen = currentLen + sepLen + unit.length
+
+      if (newLen > size && currentUnits.length > 0) {
+        // Flush current chunk, then start a new one with overlap
+        const prevUnits = currentUnits
+        flush()
+        const overlapUnits = computeOverlap(prevUnits)
+        currentUnits = [...overlapUnits, unit]
+        currentLen = currentUnits.join('\n\n').length
+      } else {
+        currentUnits.push(unit)
+        currentLen = newLen
       }
     }
+
+    flush()
   }
 
   return chunks
 }
 
-/** Finds an appropriate break point in text to avoid splitting mid-sentence */
-function findBreakPoint(text: string, maxLength: number): number {
-  // Look for sentence boundary before the limit
-  const sub = text.slice(0, maxLength)
-  const lastPeriod = sub.lastIndexOf('. ')
-  if (lastPeriod > maxLength * 0.5) return lastPeriod + 2
-  const lastSpace = sub.lastIndexOf(' ')
-  if (lastSpace > maxLength * 0.3) return lastSpace + 1
-  return maxLength
+/** Represents a heading in the hierarchy */
+interface HeadingInfo {
+  level: number
+  text: string
 }
+
+/** Represents a section with its heading context and content blocks */
+interface Section {
+  headingStack: HeadingInfo[]
+  blocks: BlockContent[]
+}
+
+/**
+ * Walks the AST and groups content blocks into sections based on heading hierarchy.
+ * Each section has the heading stack active at that point and its content blocks.
+ */
+function buildSections(tree: Root): Section[] {
+  const sections: Section[] = []
+  const headingStack: HeadingInfo[] = []
+  let currentBlocks: BlockContent[] = []
+
+  // Helper: flush current blocks into a section
+  const flushBlocks = () => {
+    if (currentBlocks.length > 0) {
+      sections.push({
+        headingStack: [...headingStack],
+        blocks: [...currentBlocks],
+      })
+      currentBlocks = []
+    }
+  }
+
+  for (const node of tree.children) {
+    if (node.type === 'heading') {
+      // Flush any content before this heading
+      flushBlocks()
+
+      const heading = node as Heading
+      const headingText = extractHeadingText(heading)
+      const level = heading.depth
+
+      // Pop headings from stack that are at same or deeper level
+      while (
+        headingStack.length > 0 &&
+        headingStack[headingStack.length - 1]!.level >= level
+      ) {
+        headingStack.pop()
+      }
+
+      // Push this heading onto the stack
+      headingStack.push({ level, text: headingText })
+    } else {
+      // Non-heading block — add to current section
+      currentBlocks.push(node as BlockContent)
+    }
+  }
+
+  // Flush remaining blocks
+  flushBlocks()
+
+  return sections
+}
+
+/**
+ * Extracts plain text from a heading node.
+ */
+function extractHeadingText(heading: Heading): string {
+  const parts: string[] = []
+
+  const extractText = (node: PhrasingContent | Heading): void => {
+    if (node.type === 'text' && 'value' in node) {
+      parts.push((node as any).value)
+    } else if ('children' in node && Array.isArray(node.children)) {
+      for (const child of node.children) {
+        extractText(child as PhrasingContent)
+      }
+    }
+  }
+
+  extractText(heading)
+  return parts.join(' ')
+}
+
+/**
+ * Serializes AST blocks back to Markdown text.
+ */
+function serializeBlocks(blocks: BlockContent[]): string {
+  // Create a minimal root node with just these blocks
+  const root: Root = { type: 'root', children: blocks }
+
+  const result = unified()
+    // remarkGfm registers table handlers; without it, GFM table nodes throw
+    // "Cannot handle unknown node `table`". Disable column padding / pipe
+    // alignment to keep sparse tables compact (same rationale as sanitize.service.ts).
+    .use(remarkGfm, { tableCellPadding: false, tablePipeAlign: false })
+    .use(remarkStringify, {
+      bullet: '-',
+      fences: true,
+      listItemIndent: 'one',
+      emphasis: '_',
+      strong: '*',
+    })
+    .stringify(root)
+
+  return result.trim()
+}
+
+
