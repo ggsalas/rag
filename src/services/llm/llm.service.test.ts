@@ -1,10 +1,20 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import type { SearchResult } from '@/types/search'
 import {
   buildContext,
   generateAnswer,
+  ensureModelLoaded,
   type LLMCitation,
+  type ModelLoadCallbacks,
 } from './llm.service'
+
+// Mock @mlc-ai/web-llm so ensureModelLoaded tests can control CreateMLCEngine
+// without needing a real GPU. The mock is hoisted by Vitest.
+const mockCreateMLCEngine = vi.fn()
+vi.mock('@mlc-ai/web-llm', () => ({
+  CreateMLCEngine: (...args: unknown[]) => mockCreateMLCEngine(...args),
+  prebuiltAppConfig: { model_list: [] },
+}))
 
 /** Minimal SearchResult factory — only the fields buildContext / generateAnswer read. */
 function makeResult(overrides: Partial<SearchResult> & Pick<SearchResult, 'chunkId' | 'searchText'>): SearchResult {
@@ -25,7 +35,7 @@ function makeResult(overrides: Partial<SearchResult> & Pick<SearchResult, 'chunk
 // lose it. The `state` const in the service captures the object reference at
 // module load, so tests must mutate its properties rather than replace it.
 const GLOBAL_KEY = '__llmModuleState__'
-type ModuleState = { engine: unknown; isRunning: boolean }
+type ModuleState = { engine: unknown; isRunning: boolean; activeLoad: Promise<boolean> | null }
 function getState(): ModuleState {
   const s = (globalThis as unknown as Record<string, ModuleState>)[GLOBAL_KEY]
   if (!s) throw new Error('Module state not initialised — import the service first')
@@ -35,6 +45,7 @@ function setMockEngine(mock: unknown): void {
   const s = getState()
   s.engine = mock
   s.isRunning = false
+  s.activeLoad = null
 }
 function readState(): ModuleState {
   return getState()
@@ -46,6 +57,7 @@ describe('buildContext', () => {
     const s = getState()
     s.engine = null
     s.isRunning = false
+    s.activeLoad = null
   })
 
   it('returns empty context and citations for empty results', () => {
@@ -143,6 +155,7 @@ describe('generateAnswer — WebGPU / context-window error handling', () => {
     const s = getState()
     s.engine = null
     s.isRunning = false
+    s.activeLoad = null
   })
 
   /** Builds a mock MLCEngine whose streaming create() rejects with the given message. */
@@ -240,5 +253,229 @@ describe('generateAnswer — WebGPU / context-window error handling', () => {
     expect(citations).toHaveLength(1)
     expect((citations[0] as LLMCitation).chunkId).toBe('c1')
     expect(readState().engine).toBe(engine)
+  })
+})
+
+describe('ensureModelLoaded — stale ready + null engine recovery', () => {
+  /** Builds a minimal ModelLoadCallbacks backed by mutable state. */
+  function makeCallbacks(initialStatus = 'idle'): ModelLoadCallbacks & { status: string; progress: number; toasts: number; errors: string[] } {
+    const cbs = {
+      status: initialStatus,
+      progress: 0,
+      toasts: 0,
+      errors: [] as string[],
+      listeners: new Set<(s: string) => void>(),
+      getStatus() { return cbs.status },
+      setStatus(s: string) {
+        cbs.status = s
+        for (const l of cbs.listeners) l(s)
+      },
+      setProgress(p: number) { cbs.progress = p },
+      subscribe(listener: (s: string) => void) {
+        cbs.listeners.add(listener)
+        return () => cbs.listeners.delete(listener)
+      },
+      showToast() { cbs.toasts++ },
+      dismissToast() {},
+      showErrorToast(msg: string) { cbs.errors.push(msg) },
+    }
+    return cbs
+  }
+
+  beforeEach(() => {
+    // Reset module singleton state between tests.
+    const s = getState()
+    s.engine = null
+    s.isRunning = false
+    s.activeLoad = null
+
+    mockCreateMLCEngine.mockReset()
+
+    // Stub navigator.gpu so initLLMModel's adapter check passes.
+    // Use vi.stubGlobal which is designed for jsdom environment.
+    const gpuMock = { requestAdapter: vi.fn().mockResolvedValue({}) }
+    vi.stubGlobal('navigator', { ...navigator, gpu: gpuMock })
+  })
+
+  it('returns true immediately when status is ready AND engine is non-null', async () => {
+    const fakeEngine = { chat: { completions: { create: vi.fn() } } }
+    setMockEngine(fakeEngine)
+
+    const cbs = makeCallbacks('ready')
+    const signal = new AbortController().signal
+
+    const result = await ensureModelLoaded(signal, cbs)
+
+    expect(result).toBe(true)
+    expect(mockCreateMLCEngine).not.toHaveBeenCalled()
+    expect(cbs.status).toBe('ready')
+  })
+
+  it('reloads when status is ready but engine is null (stale after GPU error)', async () => {
+    // Simulate the post-GPU-error state: store says ready, but engine was cleared.
+    const s = getState()
+    s.engine = null
+    s.isRunning = false
+
+    const fakeEngine = { chat: { completions: { create: vi.fn() } } }
+    mockCreateMLCEngine.mockResolvedValue(fakeEngine)
+
+    const cbs = makeCallbacks('ready')
+    const signal = new AbortController().signal
+
+    const result = await ensureModelLoaded(signal, cbs)
+
+    expect(result).toBe(true)
+    expect(mockCreateMLCEngine).toHaveBeenCalledTimes(1)
+    expect(cbs.status).toBe('ready')
+    expect(getState().engine).toBe(fakeEngine)
+  })
+
+  it('transitions through loading when recovering from stale ready', async () => {
+    const s = getState()
+    s.engine = null
+
+    const statuses: string[] = []
+    const fakeEngine = { chat: { completions: { create: vi.fn() } } }
+    mockCreateMLCEngine.mockResolvedValue(fakeEngine)
+
+    const cbs = makeCallbacks('ready')
+    const origSetStatus = cbs.setStatus.bind(cbs)
+    cbs.setStatus = (s: string) => { statuses.push(s); origSetStatus(s) }
+
+    const signal = new AbortController().signal
+    await ensureModelLoaded(signal, cbs)
+
+    expect(statuses).toEqual(['loading', 'ready'])
+  })
+
+  it('sets status to error when reload fails after stale ready', async () => {
+    const s = getState()
+    s.engine = null
+
+    mockCreateMLCEngine.mockRejectedValue(new Error('GPU error while loading the AI model.'))
+
+    const cbs = makeCallbacks('ready')
+    const signal = new AbortController().signal
+
+    const result = await ensureModelLoaded(signal, cbs)
+
+    expect(result).toBe(false)
+    expect(cbs.status).toBe('error')
+    expect(cbs.errors).toHaveLength(1)
+  })
+
+  it('deduplicates concurrent loads when two callers detect stale ready', async () => {
+    const s = getState()
+    s.engine = null
+
+    let resolveEngine: ((e: unknown) => void) | null = null
+    mockCreateMLCEngine.mockImplementation(
+      () => new Promise((resolve) => { resolveEngine = resolve }),
+    )
+
+    const cbs = makeCallbacks('ready')
+    const sig1 = new AbortController().signal
+    const sig2 = new AbortController().signal
+
+    // Start two concurrent ensureModelLoaded calls.
+    const p1 = ensureModelLoaded(sig1, cbs)
+    const p2 = ensureModelLoaded(sig2, cbs)
+
+    // Wait for the microtask queue to flush so initLLMModel starts.
+    await Promise.resolve()
+    await Promise.resolve()
+
+    // Only one CreateMLCEngine call should have been made.
+    expect(mockCreateMLCEngine).toHaveBeenCalledTimes(1)
+
+    // Resolve the engine and let both promises settle.
+    const fakeEngine = { chat: { completions: { create: vi.fn() } } }
+    resolveEngine!(fakeEngine)
+
+    const [r1, r2] = await Promise.all([p1, p2])
+    expect(r1).toBe(true)
+    // Second caller sees status go to 'ready' via subscription and resolves true.
+    expect(r2).toBe(true)
+  })
+
+  it('recovers end-to-end: GPU error in generateAnswer → ensureModelLoaded reloads', async () => {
+    // Step 1: simulate a working engine that then fails with a GPU error.
+    const brokenEngine = {
+      chat: {
+        completions: {
+          create: async () => { throw new Error('GPUBuffer mapAsync failed: buffer is unmapped') },
+        },
+      },
+      interruptGenerate: () => {},
+    }
+    setMockEngine(brokenEngine)
+
+    const onToken = () => {}
+    await expect(
+      generateAnswer('q', [makeResult({ chunkId: 'c1', searchText: 'x' })], onToken),
+    ).rejects.toThrow(/GPU error during answer generation/)
+    expect(getState().engine).toBeNull()
+
+    // Step 2: store still says 'ready' (service doesn't touch Zustand).
+    const cbs = makeCallbacks('ready')
+
+    // Step 3: ensureModelLoaded detects stale ready and reloads.
+    // The fresh engine needs to return a proper async iterable stream.
+    const freshEngine = {
+      chat: {
+        completions: {
+          create: async () => {
+            // Return an async iterable that yields one chunk then completes.
+            return {
+              async *[Symbol.asyncIterator]() {
+                yield { choices: [{ delta: { content: 'test token' } }] }
+              },
+            }
+          },
+        },
+      },
+      interruptGenerate: () => {},
+    }
+    mockCreateMLCEngine.mockResolvedValue(freshEngine)
+
+    const signal = new AbortController().signal
+    const result = await ensureModelLoaded(signal, cbs)
+
+    expect(result).toBe(true)
+    expect(getState().engine).toBe(freshEngine)
+    expect(cbs.status).toBe('ready')
+
+    // Step 4: generateAnswer works with the fresh engine.
+    const citations = await generateAnswer('q', [makeResult({ chunkId: 'c1', searchText: 'x' })], onToken)
+    expect(citations).toHaveLength(1)
+  })
+
+  it('returns false on abort without marking ready', async () => {
+    const s = getState()
+    s.engine = null
+
+    let resolveEngine: ((e: unknown) => void) | null = null
+    mockCreateMLCEngine.mockImplementation(
+      () => new Promise((resolve) => { resolveEngine = resolve }),
+    )
+
+    const cbs = makeCallbacks('idle')
+    const ctrl = new AbortController()
+
+    const p = ensureModelLoaded(ctrl.signal, cbs)
+    
+    // Wait for the microtask queue to flush so initLLMModel starts and sets resolveEngine.
+    await Promise.resolve()
+    await Promise.resolve()
+    
+    // Now abort.
+    ctrl.abort()
+
+    // Resolve the engine so the internal promise settles (avoids unhandled rejection).
+    resolveEngine!({ chat: { completions: { create: vi.fn() } } })
+
+    const result = await p
+    expect(result).toBe(false)
   })
 })

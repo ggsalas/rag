@@ -33,6 +33,7 @@ export interface LLMCitation {
 interface LlmModuleState {
   engine: MLCEngine | null
   isRunning: boolean
+  activeLoad: Promise<boolean> | null
 }
 const globalKey = '__llmModuleState__'
 const state: LlmModuleState = ((
@@ -40,6 +41,7 @@ const state: LlmModuleState = ((
 )[globalKey] ??= {
   engine: null,
   isRunning: false,
+  activeLoad: null,
 })
 
 /** Result of {@link buildContext}: the assembled prompt context and matching citations. */
@@ -259,40 +261,65 @@ export interface ModelLoadCallbacks {
   showErrorToast?: (message: string) => void
 }
 
+// Tracks an in-flight model load initiated by ensureModelLoaded so concurrent
+// callers share one load instead of each triggering their own (e.g. two callers
+// detecting the same stale-ready state simultaneously). Stored on the module
+// state singleton so tests can reset it between cases.
+
 /**
  * Loads the LLM model if not already ready.
  * Returns true if the model is ready after the call. Respects abort signal.
+ *
+ * Detects stale 'ready' status: when the store reports ready but the module
+ * engine singleton is null (cleared by a GPU runtime error in generateAnswer,
+ * or lost during HMR), falls through to reload instead of returning true —
+ * which would cause generateAnswer to throw "LLM model not loaded".
  */
 export async function ensureModelLoaded(
   signal: AbortSignal,
   callbacks: ModelLoadCallbacks,
 ): Promise<boolean> {
   const status = callbacks.getStatus()
-  if (status === 'ready') return true
-  if (status === 'loading') {
+
+  // Happy path: store says ready AND we actually have a live engine.
+  if (status === 'ready' && state.engine !== null) return true
+
+  // Another load is already in flight (store says 'loading', or a concurrent
+  // caller already detected the same stale-ready state): wait for it.
+  if (status === 'loading' || state.activeLoad) {
     return waitForModelReady(signal, callbacks)
   }
 
+  // Stale 'ready' (engine cleared by GPU error / HMR) or idle/error: load.
   callbacks.setStatus('loading')
   callbacks.setProgress(0)
   callbacks.showToast?.()
 
-  try {
-    await initLLMModel((progress) => {
-      if (signal.aborted) return
-      callbacks.setProgress(Math.round(progress * 100))
-    })
-    if (signal.aborted) return false
-    callbacks.setStatus('ready')
-    setTimeout(() => callbacks.dismissToast?.(), 2000)
-    return true
-  } catch (err) {
-    if (signal.aborted) return false
-    const message = err instanceof Error ? err.message : 'Failed to load AI model'
-    callbacks.setStatus('error')
-    callbacks.showErrorToast?.(message)
-    return false
-  }
+  const load = (async () => {
+    try {
+      await initLLMModel((progress) => {
+        if (signal.aborted) return
+        callbacks.setProgress(Math.round(progress * 100))
+      })
+      if (signal.aborted) return false
+      callbacks.setStatus('ready')
+      setTimeout(() => callbacks.dismissToast?.(), 2000)
+      return true
+    } catch (err) {
+      if (signal.aborted) return false
+      const message = err instanceof Error ? err.message : 'Failed to load AI model'
+      callbacks.setStatus('error')
+      callbacks.showErrorToast?.(message)
+      return false
+    } finally {
+      // Clear the active load tracker. If a new load has started, it will have
+      // already set state.activeLoad to a new promise before this runs.
+      state.activeLoad = null
+    }
+  })()
+
+  state.activeLoad = load
+  return load
 }
 
 /** Waits for LLM status to leave 'loading' state. Resolves true if ready, false otherwise. */
