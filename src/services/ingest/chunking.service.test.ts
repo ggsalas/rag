@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { chunkText, chunkMarkdown, type ChunkData } from './chunking.service'
+import { chunkText, chunkMarkdown, extractOverlapText, type ChunkData } from './chunking.service'
 
 describe('chunking.service', () => {
   describe('chunkText', () => {
@@ -40,12 +40,16 @@ describe('chunking.service', () => {
       }
     })
 
-    it('should keep a single long paragraph as one oversized chunk without cutting', () => {
-      const longParagraph = 'word '.repeat(200) // ~1000 chars, no blank lines
-      const chunks = chunkText(longParagraph, { size: 300, overlap: 50 })
-      // A single paragraph is atomic — never split, even if it exceeds size
-      expect(chunks).toHaveLength(1)
-      expect(chunks[0]!.text).toBe(longParagraph.trim())
+    it('splits oversized paragraphs by sentences to respect size limit', () => {
+      // A long paragraph with multiple sentences is split to respect the size limit
+      const longParagraph = 'First sentence here. Second sentence here. Third sentence here. Fourth sentence here. Fifth sentence here.'
+      const chunks = chunkText(longParagraph, { size: 100, overlap: 20 })
+      // Should split into multiple chunks since the paragraph exceeds size
+      expect(chunks.length).toBeGreaterThan(1)
+      // All chunks should have non-empty searchText
+      for (const chunk of chunks) {
+        expect(chunk.searchText.trim().length).toBeGreaterThan(0)
+      }
     })
 
     it('should assign sequential chunkIndex', () => {
@@ -110,15 +114,19 @@ describe('chunking.service', () => {
       expect(chunks[1]!.text).toContain('Short body paragraph')
     })
 
-    it('keeps a single oversized Markdown block as one chunk without cutting', () => {
-      // A single long paragraph under a heading is one atomic block — never split
-      const longParagraph = 'word '.repeat(300)
+    it('splits oversized Markdown blocks by sentences to respect size limit', () => {
+      // A single long paragraph under a heading is split by sentences to respect size
+      const sentences = Array.from({ length: 20 }, (_, i) => `Sentence ${i} with some content.`)
+      const longParagraph = sentences.join(' ')
       const text = `## Big\n\n${longParagraph}`
       const chunks = chunkMarkdown(text, { size: 300, overlap: 50 })
-      expect(chunks).toHaveLength(1)
-      expect(chunks[0]!.sectionPath).toEqual(['Big'])
-      expect(chunks[0]!.headingText).toBe('Big')
-      expect(chunks[0]!.text).toBe(longParagraph.trim())
+      // Should split into multiple chunks since the paragraph exceeds size
+      expect(chunks.length).toBeGreaterThan(1)
+      // All chunks should inherit the section context
+      for (const chunk of chunks) {
+        expect(chunk.sectionPath).toEqual(['Big'])
+        expect(chunk.headingText).toBe('Big')
+      }
     })
 
     it('splits sections with multiple blocks into separate chunks', () => {
@@ -133,16 +141,147 @@ describe('chunking.service', () => {
       }
     })
 
-    it('never splits a Markdown paragraph containing a link', () => {
-      const longParagraph =
-        'This is a long paragraph with many words. '.repeat(10) +
-        'And here is a [very important link](https://example.com/some/long/path?query=value) at the end.'
-      const text = `## Section\n\n${longParagraph}`
-      const chunks = chunkMarkdown(text, { size: 300, overlap: 50 })
-      // Single paragraph = single block = one chunk, never split
-      expect(chunks).toHaveLength(1)
-      // Link syntax must be fully intact
-      expect(chunks[0]!.text).toContain('[very important link](https://example.com/some/long/path?query=value)')
+    it('never breaks Markdown link syntax when splitting oversized paragraphs', () => {
+      // WHY THE PREVIOUS TEST WAS VACUOUS:
+      // The old test used regex `/\[(?=[^\]]*\]\()/g` which only counts `[` when
+      // followed by `](` — i.e., it only counts WELL-FORMED links. When a link is
+      // broken (e.g., `[text` in one chunk and `url)` in the next), the regex
+      // returns 0 matches, so the assertion `expect(closeBrackets).toBe(openBrackets)`
+      // becomes `expect(0).toBe(0)` and passes silently. The test never detected
+      // the bug it was supposed to catch.
+      //
+      // Additionally, the old test's input had the link in a short sentence at the
+      // end of a long paragraph. With size=300, that sentence never exceeded the
+      // budget, so `splitOversizedUnit` was never called on it. The test never
+      // exercised the code path that breaks links.
+      //
+      // THIS TEST:
+      // - Uses a single long sentence (no .!?) to force the `splitIntoSentences`
+      //   fallback path (whitespace splitting).
+      // - Makes the link text long enough (~400 chars) that it spans multiple
+      //   100-char grouping boundaries, guaranteeing the splitter will cut inside
+      //   the link if it doesn't treat links as atomic.
+      // - Asserts robustly: counts ALL `[` and ALL `](` in each chunk. A broken
+      //   link produces mismatched counts (e.g., chunk 1 has `[` but no `](`,
+      //   chunk 3 has `](` but no `[`).
+      // - Verifies the full link appears intact in at least one chunk.
+
+      const longLinkText = 'very '.repeat(80) + 'important hyperlink'
+      const longSentence =
+        'Some introductory filler text that goes on and on without any sentence boundary ' +
+        `and eventually reaches a [${longLinkText}](https://example.com/some/path) ` +
+        'which is followed by even more filler text to force the splitter to work hard ' +
+        'and split the sentence at a whitespace somewhere inside the link or nearby'
+
+      const text = `## Section\n\n${longSentence}`
+      const chunks = chunkMarkdown(text, { size: 200, overlap: 0 })
+      expect(chunks.length).toBeGreaterThan(1)
+
+      // Robust broken-link detection: count ALL `[` and ALL `](` in each chunk.
+      // A well-formed Markdown link contributes exactly one `[` and one `](`.
+      // If a link is split across chunks, one chunk will have `[` without `](`
+      // (the opening bracket) and another will have `](` without `[` (the closing
+      // part). This catches the bug that the previous regex missed.
+      for (const chunk of chunks) {
+        const allOpenBrackets = (chunk.text.match(/\[/g) || []).length
+        const linkTransitions = (chunk.text.match(/\]\(/g) || []).length
+        expect(allOpenBrackets).toBe(linkTransitions)
+      }
+
+      // The full link must appear intact in at least one chunk
+      const fullLink = `[${longLinkText}](https://example.com/some/path)`
+      const linkFound = chunks.some((c) => c.text.includes(fullLink))
+      expect(linkFound).toBe(true)
+    })
+
+    it('never breaks Markdown link syntax in overlap prefix', () => {
+      // WHY THIS TEST IS NEEDED:
+      // The overlap mechanism (`extractOverlapText`) takes the last N characters
+      // of the previous chunk and prepends them to the next chunk. If the cut
+      // position falls inside a Markdown link `[text](url)`, the overlap prefix
+      // will contain a broken link fragment (e.g., `ki/Britney:_Piece_of_Me)`
+      // which is the tail of a URL, or `](https://...)` without a preceding `[`).
+      //
+      // THIS TEST:
+      // - Creates a paragraph with a link near the end, positioned so that the
+      //   overlap cut (last 150 chars) falls inside the link.
+      // - Uses overlap > 0 to exercise `extractOverlapText`.
+      // - Verifies that no chunk has broken link syntax (unmatched `[` or `](`).
+      // - Verifies that the overlap prefix (if present) doesn't start with a
+      //   broken link fragment.
+
+      // Create a paragraph where a link is positioned near the end, within the
+      // overlap window (150 chars). The paragraph is long enough to force splitting.
+      // The link text is long enough (>150 chars) that the overlap cut will fall
+      // inside the link, not before it.
+      const filler = 'Some filler text that goes on for a while to make this paragraph long enough. '.repeat(8)
+      const longLinkText = 'very '.repeat(40) + 'important reference'
+      const link = `[${longLinkText}](https://en.wikipedia.org/wiki/Some_Article)`
+      const paragraph = `${filler} And here is an ${link} near the end of the paragraph.`
+
+      const text = `## Section\n\n${paragraph}`
+      const chunks = chunkMarkdown(text, { size: 500, overlap: 150 })
+
+      // Should split into multiple chunks
+      expect(chunks.length).toBeGreaterThan(1)
+
+      // Verify no chunk has broken link syntax
+      for (const chunk of chunks) {
+        const allOpenBrackets = (chunk.text.match(/\[/g) || []).length
+        const linkTransitions = (chunk.text.match(/\]\(/g) || []).length
+        expect(allOpenBrackets).toBe(linkTransitions)
+      }
+
+      // Verify the full link appears intact in at least one chunk
+      const linkFound = chunks.some((c) => c.text.includes(link))
+      expect(linkFound).toBe(true)
+
+      // Verify that if a chunk starts with overlap, it doesn't start with a
+      // broken link fragment (e.g., `](url)` or a URL fragment ending in `)`)
+      for (let i = 1; i < chunks.length; i++) {
+        const chunk = chunks[i]!
+        // Check if chunk starts with `](...)` without preceding `[`
+        const startsWithBrokenLink = /^\s*\]\(/.test(chunk.text) ||
+          /^[^\[]*\)\s/.test(chunk.text.slice(0, 50))
+        expect(startsWithBrokenLink).toBe(false)
+      }
+    })
+
+    it('never breaks Markdown link syntax in overlap when sentence boundary falls inside link', () => {
+      // WHY THIS TEST IS NEEDED:
+      // The overlap mechanism extracts the last N characters of the previous chunk,
+      // then applies sentence boundary detection to find a clean start. If the
+      // sentence boundary falls inside a Markdown link (e.g., at `bestseller. After`
+      // within `[...bestseller. After starring](url)`), the overlap would start with
+      // a broken link fragment like `After starring](url)`.
+      //
+      // THIS TEST uses the exact text from the Britney corpus that triggered the bug:
+      // The link `[well as Britney (2001), her 21st-century bestseller. After starring]`
+      // contains `bestseller. After` - a period followed by space. The old code would
+      // detect this as a sentence boundary and return `After starring](url)` as the
+      // overlap, breaking the link.
+      //
+      // IMPORTANT: The overlap window must be large enough that cutPos falls inside
+      // the link text (before `bestseller. After`), not in the URL part after it.
+      // With overlapChars=150, cutPos falls at position 317 (in the URL), which
+      // doesn't exercise the bug. With overlapChars=202, cutPos falls at position
+      // 265 (at the "b" in "bestseller"), which does exercise the bug.
+
+      // This is the exact text from chunk 1 of the Britney corpus
+      const prevChunkText = `Spears became the best-selling teenage artist of all time with the best-selling albums [*...Baby*](https://en.wikipedia.org/wiki/...Baby_One_More_Time_\\(album\\)) [*One More Time (1999) and Oops!... I Did It Again (2000), as well as Britney (2001), her 21st-century bestseller. After starring](https://en.wikipedia.org/wiki/List_of_best-selling_albums_of_the_21st_century) in the film Crossroads (2002), she released the albums In the _Zone (2003) and Blackout (2007).`
+
+      // Extract overlap with a window that places cutPos inside the link text
+      // (at the "b" in "bestseller", where the sentence boundary is)
+      const overlap = extractOverlapText(prevChunkText, 202)
+
+      // The overlap should NOT start with "After starring]("
+      // which would indicate a broken link
+      expect(overlap.startsWith('After starring](')).toBe(false)
+
+      // The overlap should not contain unbalanced brackets
+      const openBrackets = (overlap.match(/\[/g) || []).length
+      const linkTransitions = (overlap.match(/\]\(/g) || []).length
+      expect(openBrackets).toBe(linkTransitions)
     })
 
     it('assigns sequential chunkIndex', () => {
@@ -253,10 +392,10 @@ describe('chunking.service', () => {
 
       expect(chunks).toHaveLength(1)
       expect(chunks[0]!.sectionPath).toEqual(['Metrics'])
-      // Table preserved (serialized compactly: tableCellPadding disabled)
-      expect(chunks[0]!.text).toContain('|Name|Value|')
-      expect(chunks[0]!.text).toContain('|Precision|0.92|')
-      expect(chunks[0]!.text).toContain('|Recall|0.87|')
+      // Table preserved with original formatting (sliced from source, not re-serialized)
+      expect(chunks[0]!.text).toContain('| Name | Value |')
+      expect(chunks[0]!.text).toContain('| Precision | 0.92 |')
+      expect(chunks[0]!.text).toContain('| Recall | 0.87 |')
       // searchText keeps cell content without pipes
       expect(chunks[0]!.searchText).toContain('Precision')
       expect(chunks[0]!.searchText).toContain('0.92')

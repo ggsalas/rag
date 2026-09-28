@@ -173,7 +173,7 @@ export function DocumentViewerPage() {
               <div className="max-w-5xl mx-auto px-6 py-4">
                 <div className="mb-2 flex items-center gap-2">
                   <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                    Chunk {highlightChunkIndex} — Chunk text
+                    Chunk {highlightChunkIndex + 1} — Chunk text
                   </span>
                   {chunk && chunk.sectionPath.length > 0 && (
                     <span className="text-xs text-muted-foreground">
@@ -203,6 +203,8 @@ export function DocumentViewerPage() {
                   text={content.text}
                   highlight={chunkText}
                   highlightRef={highlightRef}
+                  sourceStart={chunk?.sourceStart}
+                  sourceEnd={chunk?.sourceEnd}
                 />
               </div>
             ) : (

@@ -4,12 +4,18 @@ interface HighlightedTextProps {
   text: string
   highlight: string | null
   highlightRef: React.RefObject<HTMLElement | null>
+  /** Start offset of the chunk's content proper in the document text */
+  sourceStart?: number
+  /** End offset of the chunk's content proper in the document text */
+  sourceEnd?: number
 }
 
 export function HighlightedText({
   text,
   highlight,
   highlightRef,
+  sourceStart,
+  sourceEnd,
 }: HighlightedTextProps) {
   useEffect(() => {
     if (highlightRef.current) {
@@ -21,7 +27,8 @@ export function HighlightedText({
     return <div className="whitespace-pre-wrap text-foreground">{text}</div>
   }
 
-  const match = findChunkInText(text, highlight)
+  // Try using offsets first (primary path for new chunks)
+  const match = findHighlightMatch(text, sourceStart, sourceEnd, highlight)
 
   if (!match) {
     return <div className="whitespace-pre-wrap text-foreground">{text}</div>
@@ -42,6 +49,47 @@ export function HighlightedText({
       </mark>
       {after}
     </div>
+  )
+}
+
+/**
+ * Finds the highlight position using offsets (primary) or text search (fallback).
+ *
+ * Primary path: if sourceStart/sourceEnd are valid offsets within the document,
+ * use them directly. This is exact and fast.
+ *
+ * Fallback path: for old chunks without offsets, search for the highlight text
+ * in the document. Uses exact match first, then whitespace-normalized match.
+ */
+function findHighlightMatch(
+  fullText: string,
+  sourceStart: number | undefined,
+  sourceEnd: number | undefined,
+  highlightText: string,
+): { start: number; end: number } | null {
+  // Primary path: use offsets if valid
+  if (isValidOffsetRange(sourceStart, sourceEnd, fullText.length)) {
+    return { start: sourceStart!, end: sourceEnd! }
+  }
+
+  // Fallback path: search for the highlight text
+  return findChunkInText(fullText, highlightText)
+}
+
+/**
+ * Validates that offsets form a valid range within the document bounds.
+ */
+function isValidOffsetRange(
+  start: number | undefined,
+  end: number | undefined,
+  textLength: number,
+): boolean {
+  return (
+    start !== undefined &&
+    end !== undefined &&
+    start >= 0 &&
+    end > start &&
+    end <= textLength
   )
 }
 

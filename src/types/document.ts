@@ -35,6 +35,21 @@ export type Chunk = {
   /** Immediate parent heading text */
   headingText: string
   embedding: number[]
+  /**
+   * Start offset of chunk's content proper in the original document text.
+   * Excludes the overlap prefix (overlap is shared with previous chunk).
+   * For multi-block chunks, this is the start of the first content block.
+   * Undefined for plain-text chunking (chunkText) which has no AST positions.
+   */
+  sourceStart?: number
+  /**
+   * End offset of chunk's content proper in the original document text.
+   * Excludes the overlap prefix. For multi-block chunks, this is the end of
+   * the last content block. The range [sourceStart, sourceEnd] may include
+   * inter-block whitespace that differs from the chunk's text.
+   * Undefined for plain-text chunking (chunkText).
+   */
+  sourceEnd?: number
 }
 
 export type DocumentContent = {

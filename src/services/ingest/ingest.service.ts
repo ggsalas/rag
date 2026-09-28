@@ -129,6 +129,8 @@ async function processDocument(
       searchText: data.searchText,
       sectionPath: data.sectionPath,
       headingText: data.headingText,
+      sourceStart: data.sourceStart,
+      sourceEnd: data.sourceEnd,
       embedding: embeddings[i]!,
     }))
 
