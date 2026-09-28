@@ -1,46 +1,40 @@
 # Roadmap de mejora RAG
 
-Hoja de ruta acordada para mejorar la calidad de búsqueda y de las respuestas IA. Se valida de forma incremental: cada paso se comprueba con PDFs reales antes de pasar al siguiente (ver [Validación](#criterios-de-aceptaci%C3%B3n-y-validaci%C3%B3n)).
+La búsqueda actual ya fue validada con el corpus de Britney y dos papers QASPER. Las métricas y limitaciones detalladas están en `OPTIMIZATION.md`.
 
-## Paso activo: refinar el chunking
+## Estado actual
 
-**No es la implementación inicial del chunking** (ya existe chunking contextual en `src/services/ingest/chunking.service.ts`). El objetivo es refinarlo:
-
-- [x] Un párrafo completo por chunk siempre que sea posible.
-- [x] Preservar el contexto de sección completo en cada chunk.
-- [x] Nunca partir enlaces Markdown entre chunks.
-- [x] Nunca partir oraciones entre chunks.
-
-**Validación:** el chunking refinado se probó con PDFs reales y fue aceptado por el usuario.
-
-**Política para casos límite:** si un párrafo u oración supera el tamaño objetivo del chunk, se acepta un chunk sobredimensionado. **Nunca** se corta una oración o un enlace por ajustar al tamaño.
-
-## Criterios de aceptación y validación
-
-- Aceptación de un chunk: párrafos y oraciones íntegros, enlaces Markdown sin partir, contexto de sección preservado, y ningún corte artificial por tamaño.
-- Flujo de validación: tras **cada paso**, el usuario prueba la ingestión y búsqueda con **PDFs reales** antes de continuar.
-
-## Completado
-
-- [x] Limpieza de la ingestión de PDF/Markdown.
-- [x] Filtrado de sidebars / bloques de maquetación malformados.
-- [x] Filtrado de secciones boilerplate.
-- [x] Doble representación por chunk: `text` (visualización) / `searchText` (búsqueda).
-- [x] Metadatos de sección por chunk.
-- [x] Chunking contextual inicial.
-- [x] Inspector de chunks.
-- [x] Salvaguardas IA/WebGPU: contexto del LLM acotado usando `searchText`, y manejo para el usuario de errores de GPU y de ventana de contexto.
+- [x] Chunking contextual con límite de tokens, overlap y enlaces Markdown atómicos.
+- [x] Texto original preservado mediante offsets `sourceStart`/`sourceEnd`.
+- [x] Navegación exacta al chunk desde los resultados.
+- [x] Embeddings sin truncación silenciosa en los chunks producidos.
+- [x] Recuperación híbrida con pesos fijos `text: 0.25`, `vector: 0.75`.
+- [x] Cross-encoder bajo demanda con degradación elegante.
+- [x] Abstención conservadora con umbral de logit `-6.0`.
+- [x] Ground truth reproducible y benchmarks offline bajo `src/dev/`.
+- [x] Validación con Britney y QASPER.
 
 ## Próximos pasos
 
-- [ ] **Presets de búsqueda**: `balanced` (50/50) y `semantic` (10/90), más mejoras en el score floor.
-- [ ] **Mejoras de prompting** en el modo de respuesta IA.
-- [ ] Evaluar **HyDE + RRF** (solo después de los dos anteriores).
+- [ ] Validar con más documentos Markdown y DOCX representativos.
+- [ ] Mejorar la abstención para preguntas plausibles sin respuesta.
+- [ ] Investigar el caso `first-album` del benchmark.
+- [ ] Evaluar mejoras de prompting en modo IA.
+- [ ] Considerar soporte multilingüe, empezando por español.
 
-## Aplazado (deferred)
+## Limitaciones conocidas
 
-- Cambio de modelo de embeddings (estrategia 6).
-- Reindexación explícita (estrategia 11).
-- Estrategias 12–14.
+- La abstención no distingue de forma fiable preguntas plausibles sin respuesta.
+- La validación sigue limitada a pocos corpus.
+- Los DOCX pierden contexto de sección y muestran una pequeña caída de ranking.
+- Los benchmarks pesados requieren ejecutar sus variables de entorno específicas.
 
-> **Nota sobre la numeración de estrategias:** es ambigua en el documento de origen — prompting es la estrategia **10** y HyDE/RRF la **9**. El orden planificado no sigue la numeración: **presets → prompting → HyDE/RRF**.
+## Verificación
+
+Usar siempre:
+
+```bash
+npm run typecheck
+npx vitest run
+npm run build
+```
