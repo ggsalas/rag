@@ -9,6 +9,7 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:cross-encoder": "CROSS_ENCODER_BENCHMARK=1 vitest run --environment node --reporter=verbose src/dev/benchmarks/search/cross-encoder-benchmark.test.ts",
     "typecheck": "tsc -b --force",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
