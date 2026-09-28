@@ -4,9 +4,11 @@ import {
   LLM_MODEL_DOWNLOAD_SIZE,
   EMBEDDING_MODEL_DISPLAY_NAME,
   EMBEDDING_MODEL_DOWNLOAD_SIZE,
+  RERANKER_MODEL_DISPLAY_NAME,
+  RERANKER_MODEL_DOWNLOAD_SIZE,
 } from '@/lib/constants'
 
-type ModelKind = 'llm' | 'embedding'
+type ModelKind = 'llm' | 'embedding' | 'reranker'
 
 interface ModelConfig {
   busyLabel: string
@@ -33,6 +35,14 @@ const CONFIG: Record<ModelKind, ModelConfig> = {
     size: EMBEDDING_MODEL_DOWNLOAD_SIZE,
     selectProgress: (s) => s.embeddingProgress,
     selectStatus: (s) => s.embeddingStatus,
+  },
+  reranker: {
+    busyLabel: 'Downloading reranker model…',
+    doneLabel: 'Reranker model ready',
+    name: RERANKER_MODEL_DISPLAY_NAME,
+    size: RERANKER_MODEL_DOWNLOAD_SIZE,
+    selectProgress: (s) => s.rerankerProgress,
+    selectStatus: (s) => s.rerankerStatus,
   },
 }
 

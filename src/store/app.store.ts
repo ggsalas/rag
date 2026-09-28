@@ -11,6 +11,10 @@ export interface AppState {
   llmProgress: number
   setLlmStatus: (status: ModelStatus) => void
   setLlmProgress: (progress: number) => void
+  rerankerStatus: ModelStatus
+  rerankerProgress: number
+  setRerankerStatus: (status: ModelStatus) => void
+  setRerankerProgress: (progress: number) => void
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -22,4 +26,8 @@ export const useAppStore = create<AppState>((set) => ({
   llmProgress: 0,
   setLlmStatus: (status) => set({ llmStatus: status }),
   setLlmProgress: (progress) => set({ llmProgress: progress }),
+  rerankerStatus: 'idle',
+  rerankerProgress: 0,
+  setRerankerStatus: (status) => set({ rerankerStatus: status }),
+  setRerankerProgress: (progress) => set({ rerankerProgress: progress }),
 }))
