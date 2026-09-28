@@ -6,6 +6,8 @@ import { useParams, useLocation, useNavigate } from 'react-router'
 
 interface ResultCardProps {
   result: SearchResult
+  /** 1-based ranking of this result in the search results list */
+  resultNumber: number
   isFocused?: boolean
   savedSearchState?: SavedSearchState
   /** undefined = AI mode off · null = AI mode on, not sent · number = sent with this citation index */
@@ -14,6 +16,7 @@ interface ResultCardProps {
 
 export function ResultCard({
   result,
+  resultNumber,
   isFocused = false,
   savedSearchState,
   llmCitationIndex,
@@ -65,6 +68,9 @@ export function ResultCard({
     >
       <div className="flex items-start justify-between gap-3 mb-2">
         <div className="flex items-center gap-2 min-w-0">
+          <span className="text-xs font-mono text-muted-foreground shrink-0">
+            #{resultNumber}
+          </span>
           <h3 className="text-sm font-semibold text-foreground truncate">
             {result.documentName}
           </h3>
@@ -88,8 +94,8 @@ export function ResultCard({
         Chunk {result.chunkIndex + 1}
       </p>
 
-      <p className="text-sm text-foreground leading-relaxed line-clamp-4">
-        {result.text}
+      <p className="text-sm text-foreground leading-relaxed ">
+        {result.searchText}
       </p>
     </div>
   )
