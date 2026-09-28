@@ -20,14 +20,12 @@ import type { SearchPreferences } from '@/types/library'
 import type {
   SavedSearchState,
   PipelineOptions,
-  SearchPreset,
 } from '@/types/search'
 import {
   createSearchStore,
   type SearchStore,
 } from '@/hooks/useSearchStore'
 import { useSearchPreferences } from '@/hooks/useSearchPreferences'
-import { SEARCH_PRESETS } from '@/lib/constants'
 import { SearchBar } from '@/components/search/SearchBar'
 import { ResultList } from '@/components/search/ResultList'
 import { LLMAnswer } from '@/components/search/LLMAnswer'
@@ -129,7 +127,6 @@ export function SearchPage() {
     isAiMode: prefs.isAiMode,
     hybridWeights: prefs.hybridWeights,
     maxResults: prefs.maxResults,
-    minScore: prefs.minScore,
     llmMaxTokens: prefs.llmMaxTokens,
   }
 
@@ -186,26 +183,10 @@ export function SearchPage() {
   )
 
   // Pref changes: update local + persist to IndexedDB, re-search if active query
-  const handleSetPreset = useCallback(
-    (preset: SearchPreset) => {
-      prefs.setSearchPreset(preset)
-      reSearchWithOverride({ hybridWeights: SEARCH_PRESETS[preset] })
-    },
-    [prefs, reSearchWithOverride],
-  )
-
   const handleSetMaxResults = useCallback(
     (n: number) => {
       prefs.setMaxResults(n)
       reSearchWithOverride({ maxResults: n })
-    },
-    [prefs, reSearchWithOverride],
-  )
-
-  const handleSetMinScore = useCallback(
-    (n: number) => {
-      prefs.setMinScore(n)
-      reSearchWithOverride({ minScore: n })
     },
     [prefs, reSearchWithOverride],
   )
@@ -317,12 +298,8 @@ export function SearchPage() {
           isSearching={isSearching}
           embeddingStatus={embeddingStatus}
           initialQuery={urlQuery}
-          searchPreset={prefs.searchPreset}
-          onPresetChange={handleSetPreset}
           maxResults={prefs.maxResults}
           onMaxResultsChange={handleSetMaxResults}
-          minScore={prefs.minScore}
-          onMinScoreChange={handleSetMinScore}
           notFocused={!!focusedChunkId}
           isAiMode={prefs.isAiMode}
           onAiModeToggle={toggleAi}

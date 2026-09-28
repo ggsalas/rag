@@ -1,8 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
-import { useSearchPreferences, inferPresetFromWeights } from './useSearchPreferences'
-import { DEFAULT_SEARCH_PRESET, SEARCH_PRESETS } from '@/lib/constants'
-import type { SearchPreferences } from '@/types/library'
+import { useSearchPreferences } from './useSearchPreferences'
+import { DEFAULT_HYBRID_WEIGHTS } from '@/lib/constants'
 
 // Mock the library service
 vi.mock('@/services/library.service', () => ({
@@ -18,42 +17,20 @@ describe('useSearchPreferences', () => {
     vi.clearAllMocks()
   })
 
-  describe('inferPresetFromWeights', () => {
-    it('should infer balanced preset for 50/50 weights', () => {
-      expect(inferPresetFromWeights({ text: 0.5, vector: 0.5 })).toBe('balanced')
-    })
-
-    it('should infer semantic preset for vector-dominant weights (>= 0.7)', () => {
-      expect(inferPresetFromWeights({ text: 0.3, vector: 0.7 })).toBe('semantic')
-      expect(inferPresetFromWeights({ text: 0.2, vector: 0.8 })).toBe('semantic')
-      expect(inferPresetFromWeights({ text: 0.1, vector: 0.9 })).toBe('semantic')
-    })
-
-    it('should infer balanced preset for text-dominant weights', () => {
-      expect(inferPresetFromWeights({ text: 0.6, vector: 0.4 })).toBe('balanced')
-      expect(inferPresetFromWeights({ text: 0.7, vector: 0.3 })).toBe('balanced')
-    })
-
-    it('should infer balanced preset for weights between 0.5 and 0.7 vector', () => {
-      expect(inferPresetFromWeights({ text: 0.4, vector: 0.6 })).toBe('balanced')
-    })
-  })
-
-  describe('initial state', () => {
-    it('should use default preset when no initial prefs provided', () => {
+  describe('hybrid weights', () => {
+    it('should always return the fixed DEFAULT_HYBRID_WEIGHTS', () => {
       const { result } = renderHook(() =>
         useSearchPreferences('lib-1', null),
       )
 
-      expect(result.current.searchPreset).toBe(DEFAULT_SEARCH_PRESET)
-      expect(result.current.hybridWeights).toEqual(
-        SEARCH_PRESETS[DEFAULT_SEARCH_PRESET],
-      )
+      expect(result.current.hybridWeights).toEqual(DEFAULT_HYBRID_WEIGHTS)
     })
 
-    it('should use explicit searchPreset from initial prefs', () => {
-      const initialPrefs: SearchPreferences = {
-        searchPreset: 'semantic',
+    it('should ignore legacy searchPreset, hybridWeights, and minScore from initial prefs', () => {
+      const initialPrefs = {
+        // Legacy fields that should be ignored
+        searchPreset: 'semantic' as any,
+        hybridWeights: { text: 0.1, vector: 0.9 } as any,
         maxResults: 10,
         minScore: 70,
       }
@@ -62,91 +39,7 @@ describe('useSearchPreferences', () => {
         useSearchPreferences('lib-1', initialPrefs),
       )
 
-      expect(result.current.searchPreset).toBe('semantic')
-      expect(result.current.hybridWeights).toEqual(SEARCH_PRESETS.semantic)
-    })
-
-    it('should infer preset from legacy hybridWeights when searchPreset is missing', () => {
-      const initialPrefs: SearchPreferences = {
-        hybridWeights: { text: 0.1, vector: 0.9 },
-        maxResults: 10,
-        minScore: 70,
-      }
-
-      const { result } = renderHook(() =>
-        useSearchPreferences('lib-1', initialPrefs),
-      )
-
-      expect(result.current.searchPreset).toBe('semantic')
-      expect(result.current.hybridWeights).toEqual(SEARCH_PRESETS.semantic)
-    })
-
-    it('should infer balanced preset from legacy 50/50 weights', () => {
-      const initialPrefs: SearchPreferences = {
-        hybridWeights: { text: 0.5, vector: 0.5 },
-        maxResults: 10,
-        minScore: 70,
-      }
-
-      const { result } = renderHook(() =>
-        useSearchPreferences('lib-1', initialPrefs),
-      )
-
-      expect(result.current.searchPreset).toBe('balanced')
-    })
-  })
-
-  describe('setSearchPreset', () => {
-    it('should update preset and derive hybrid weights', () => {
-      const { result } = renderHook(() =>
-        useSearchPreferences('lib-1', null),
-      )
-
-      expect(result.current.searchPreset).toBe('balanced')
-
-      act(() => {
-        result.current.setSearchPreset('semantic')
-      })
-
-      expect(result.current.searchPreset).toBe('semantic')
-      expect(result.current.hybridWeights).toEqual(SEARCH_PRESETS.semantic)
-    })
-
-    it('should persist both searchPreset and hybridWeights', () => {
-      const { result } = renderHook(() =>
-        useSearchPreferences('lib-1', null),
-      )
-
-      act(() => {
-        result.current.setSearchPreset('semantic')
-      })
-
-      expect(mockUpdateSearchPreferences).toHaveBeenCalledWith(
-        'lib-1',
-        expect.objectContaining({
-          searchPreset: 'semantic',
-          hybridWeights: SEARCH_PRESETS.semantic,
-        }),
-      )
-    })
-
-    it('should switch back to balanced preset', () => {
-      const { result } = renderHook(() =>
-        useSearchPreferences('lib-1', null),
-      )
-
-      act(() => {
-        result.current.setSearchPreset('semantic')
-      })
-
-      expect(result.current.searchPreset).toBe('semantic')
-
-      act(() => {
-        result.current.setSearchPreset('balanced')
-      })
-
-      expect(result.current.searchPreset).toBe('balanced')
-      expect(result.current.hybridWeights).toEqual(SEARCH_PRESETS.balanced)
+      expect(result.current.hybridWeights).toEqual(DEFAULT_HYBRID_WEIGHTS)
     })
   })
 
@@ -167,22 +60,6 @@ describe('useSearchPreferences', () => {
       )
     })
 
-    it('should update minScore and persist', () => {
-      const { result } = renderHook(() =>
-        useSearchPreferences('lib-1', null),
-      )
-
-      act(() => {
-        result.current.setMinScore(80)
-      })
-
-      expect(result.current.minScore).toBe(80)
-      expect(mockUpdateSearchPreferences).toHaveBeenCalledWith(
-        'lib-1',
-        expect.objectContaining({ minScore: 80 }),
-      )
-    })
-
     it('should update isAiMode and persist', () => {
       const { result } = renderHook(() =>
         useSearchPreferences('lib-1', null),
@@ -197,6 +74,22 @@ describe('useSearchPreferences', () => {
         'lib-1',
         expect.objectContaining({ isAiMode: true }),
       )
+    })
+
+    it('should not persist legacy searchPreset, hybridWeights, or minScore fields', () => {
+      const { result } = renderHook(() =>
+        useSearchPreferences('lib-1', null),
+      )
+
+      act(() => {
+        result.current.setMaxResults(10)
+      })
+
+      const persisted = mockUpdateSearchPreferences.mock.calls[0]?.[1]
+      expect(persisted).toBeDefined()
+      expect(persisted).not.toHaveProperty('searchPreset')
+      expect(persisted).not.toHaveProperty('hybridWeights')
+      expect(persisted).not.toHaveProperty('minScore')
     })
   })
 })

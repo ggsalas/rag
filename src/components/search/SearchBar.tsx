@@ -2,19 +2,14 @@ import { useState, useRef, useEffect, type FormEvent } from 'react'
 import { X, Sparkles } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import type { ModelStatus } from '@/store/app.store'
-import type { SearchPreset } from '@/types/search'
 
 interface SearchBarProps {
   onSearch: (query: string) => void
   isSearching: boolean
   embeddingStatus: ModelStatus
   initialQuery?: string
-  searchPreset?: SearchPreset
-  onPresetChange?: (preset: SearchPreset) => void
   maxResults?: number
   onMaxResultsChange?: (n: number) => void
-  minScore?: number
-  onMinScoreChange?: (n: number) => void
   notFocused?: boolean
   isAiMode?: boolean
   onAiModeToggle?: () => void
@@ -26,12 +21,8 @@ export function SearchBar({
   onSearch,
   embeddingStatus,
   initialQuery = '',
-  searchPreset,
-  onPresetChange,
   maxResults,
   onMaxResultsChange,
-  minScore,
-  onMinScoreChange,
   notFocused,
   isAiMode = false,
   onAiModeToggle,
@@ -59,11 +50,7 @@ export function SearchBar({
 
   const isDisabled = embeddingStatus !== 'ready'
   const hasText = inputValue.trim().length > 0
-  const showPreset = searchPreset !== undefined && onPresetChange !== undefined
-  const showConfig =
-    showPreset ||
-    (maxResults !== undefined && minScore !== undefined) ||
-    !!onAiModeToggle
+  const showConfig = maxResults !== undefined || !!onAiModeToggle
 
   return (
     <div>
@@ -166,50 +153,8 @@ export function SearchBar({
                       </>
                     )}
 
-                    {showPreset && (
-                      <>
-                        <div className="w-px h-4 bg-border mx-1" />
-                        <span className="text-xs text-muted-foreground whitespace-nowrap">
-                          Mode
-                        </span>
-                        <div
-                          className="inline-flex"
-                          role="group"
-                          aria-label="Search mode"
-                        >
-                          <button
-                            type="button"
-                            onClick={() => onPresetChange('balanced')}
-                            disabled={isDisabled}
-                            className={`px-2 py-0.5 text-xs rounded-l rounded-r-none border transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
-                              searchPreset === 'balanced'
-                                ? 'bg-primary text-primary-foreground border-primary'
-                                : 'bg-background text-muted-foreground border-border hover:text-foreground'
-                            }`}
-                            title="Balanced: combines exact keyword matching with semantic understanding"
-                          >
-                            Balanced
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => onPresetChange('semantic')}
-                            disabled={isDisabled}
-                            className={`px-2 py-0.5 text-xs rounded-r rounded-l-none border border-l-0 transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
-                              searchPreset === 'semantic'
-                                ? 'bg-primary text-primary-foreground border-primary'
-                                : 'bg-background text-muted-foreground border-border hover:text-foreground'
-                            }`}
-                            title="Semantic: prioritizes meaning over exact words (better for conceptual queries)"
-                          >
-                            Semantic
-                          </button>
-                        </div>
-                      </>
-                    )}
-
                     {maxResults !== undefined && onMaxResultsChange && (
                       <>
-                        <div className="w-px h-4 bg-border mx-1" />
                         <span className="text-xs text-muted-foreground whitespace-nowrap">
                           Max results
                         </span>
@@ -226,32 +171,6 @@ export function SearchBar({
                           disabled={isDisabled}
                           className="w-12 text-xs text-center border border-border rounded px-1 py-0.5 outline-none focus:border-ring disabled:opacity-50 text-foreground"
                         />
-                      </>
-                    )}
-
-                    {minScore !== undefined && onMinScoreChange && (
-                      <>
-                        <div className="w-px h-4 bg-border mx-1" />
-                        <span className="text-xs text-muted-foreground whitespace-nowrap">
-                          Min score
-                        </span>
-                        <input
-                          type="number"
-                          min="0"
-                          max="100"
-                          value={minScore}
-                          onChange={(e) =>
-                            onMinScoreChange(
-                              Math.min(
-                                100,
-                                Math.max(0, parseInt(e.target.value) || 0),
-                              ),
-                            )
-                          }
-                          disabled={isDisabled}
-                          className="w-12 text-xs text-center border border-border rounded px-1 py-0.5 outline-none focus:border-ring disabled:opacity-50 text-foreground"
-                        />
-                        <span className="text-xs text-muted-foreground">%</span>
                       </>
                     )}
                   </div>

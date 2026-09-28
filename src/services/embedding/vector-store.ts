@@ -2,7 +2,8 @@ import { create, insert, search, remove, type AnyOrama } from '@orama/orama'
 import type { Chunk } from '@/types/document'
 import { getChunksByLibrary } from '@/services/chunk.service'
 import type { HybridWeights } from '@/types/search'
-import { EMBEDDING_DIMENSIONS, DEFAULT_MAX_RESULTS } from '@/lib/constants'
+import { EMBEDDING_DIMENSIONS, DEFAULT_MAX_RESULTS, DEFAULT_HYBRID_WEIGHTS, ORAMA_LEXICAL_THRESHOLD } from '@/lib/constants'
+import { ENGLISH_STOP_WORDS_ARRAY } from '@/lib/stop-words'
 
 export interface VectorSearchResult {
   chunkId: string
@@ -32,6 +33,13 @@ async function createIndex(libraryId: string): Promise<AnyOrama> {
       embedding: `vector[${EMBEDDING_DIMENSIONS}]`,
       chunkIndex: 'number',
     } as const,
+    components: {
+      tokenizer: {
+        language: 'english',
+        stemming: true,
+        stopWords: ENGLISH_STOP_WORDS_ARRAY,
+      },
+    },
   })
   indexes.set(libraryId, index)
   return index
@@ -84,7 +92,50 @@ export async function searchHybrid(
     limit: topK ?? DEFAULT_MAX_RESULTS,
     includeVectors: false,
     similarity: 0.0,
-    hybridWeights: weights ?? { text: 0.5, vector: 0.5 },
+    // CAVEAT: Orama's search-hybrid.js checks `hybridWeights.text && hybridWeights.vector`
+    // with truthiness — a component of 0 silently discards the weights and falls back
+    // to 0.5/0.5. Never pass a zero component. See DEFAULT_HYBRID_WEIGHTS JSDoc.
+    hybridWeights: weights ?? DEFAULT_HYBRID_WEIGHTS,
+    threshold: ORAMA_LEXICAL_THRESHOLD,
+  })
+
+  return results.hits.map((hit) => ({
+    chunkId: hit.document.chunkId as string,
+    documentId: hit.document.documentId as string,
+    documentName: hit.document.documentName as string,
+    text: hit.document.text as string,
+    searchText: hit.document.searchText as string,
+    sectionPath: (hit.document.sectionPath as string[]) ?? [],
+    headingText: (hit.document.headingText as string) ?? '',
+    score: hit.score,
+    chunkIndex: hit.document.chunkIndex as number,
+  }))
+}
+
+/**
+ * Performs BM25 fulltext search within a library's index.
+ *
+ * Returns the same `VectorSearchResult` shape as `searchHybrid` and
+ * `searchByVector` so callers can union/fuse the candidate lists without
+ * mapping. The `score` is Orama's BM25 score (unbounded, typically > 0).
+ *
+ * Used by the fused-candidate retrieval experiment to obtain an independent
+ * lexical candidate pool separate from the hybrid or vector paths.
+ */
+export async function searchByText(
+  libraryId: string,
+  term: string,
+  topK?: number,
+): Promise<VectorSearchResult[]> {
+  const index = indexes.get(libraryId)
+  if (!index) return []
+
+  const results = await search(index, {
+    mode: 'fulltext',
+    term,
+    properties: ['searchText', 'headingText'],
+    limit: topK ?? DEFAULT_MAX_RESULTS,
+    threshold: ORAMA_LEXICAL_THRESHOLD,
   })
 
   return results.hits.map((hit) => ({

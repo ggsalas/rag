@@ -170,7 +170,6 @@ async function runSearchPipeline(
       opts.libraryId,
       opts.maxResults,
       opts.hybridWeights,
-      opts.minScore,
     )
     if (ctrl.signal.aborted) return
 
