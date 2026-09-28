@@ -9,6 +9,7 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
+    "typecheck": "tsc -b --force",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
   },
