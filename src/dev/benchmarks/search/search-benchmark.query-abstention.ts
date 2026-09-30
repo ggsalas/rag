@@ -1,7 +1,7 @@
 import type { BenchmarkCase, BenchmarkMetrics } from './search-benchmark.types'
 import type { BenchmarkCaseResult, BenchmarkConfigReport } from './search-benchmark.runner'
 import { evaluateAll } from './search-benchmark.evaluation'
-import { computeLexicalCoverage } from './rerank.service'
+import { computeLexicalCoverage } from '@/services/search/rerank.service'
 
 /**
  * Query-level lexical abstention experiment: all-or-nothing filtering per query.

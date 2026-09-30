@@ -10,6 +10,7 @@ import {
   rerankWithCrossEncoder,
   isRerankerReady,
 } from './cross-encoder-reranker.service'
+import { rerank, RERANK_CANDIDATE_POOL } from './rerank.service'
 
 /**
  * Error thrown when the search pipeline cannot run because a required model
@@ -24,15 +25,17 @@ export class SearchModelNotReadyError extends Error {
 
 /**
  * Performs hybrid search (BM25 + semantic) within a library, followed by
- * cross-encoder reranking.
+ * lexical reranking and cross-encoder reranking.
  *
  * Pipeline:
  *   1. Embed query
- *   2. Retrieve RERANK_CANDIDATES_CROSS_ENCODER candidates from Orama (hybrid)
+ *   2. Retrieve RERANK_CANDIDATE_POOL (100) candidates from Orama (hybrid)
  *   3. Filter empty chunks
- *   4. Rerank with cross-encoder (MUST be loaded — no fallback)
- *   5. Truncate to maxResults
- *   6. Abstention: filter by RERANKER_ABSTENTION_THRESHOLD (logit -6.0)
+ *   4. Lexical rerank (coverage, phrase, heading boosts)
+ *   5. Take top RERANK_CANDIDATES_CROSS_ENCODER (40) for cross-encoder
+ *   6. Rerank with cross-encoder (MUST be loaded — no fallback)
+ *   7. Truncate to maxResults (default 10)
+ *   8. Abstention: filter by RERANKER_ABSTENTION_THRESHOLD (logit -6.0)
  *
  * If either the embedding model or the cross-encoder is not ready, the
  * function throws a `SearchModelNotReadyError`. There is NO degraded-mode
@@ -59,9 +62,9 @@ export async function search(
 
   const embedding = await embed(trimmed)
 
-  // Retrieve the candidate pool sized for cross-encoder reranking.
+  // Retrieve a wide candidate pool for lexical reranking.
   const effectiveTopK = Math.max(
-    RERANK_CANDIDATES_CROSS_ENCODER,
+    RERANK_CANDIDATE_POOL,
     maxResults ?? DEFAULT_MAX_RESULTS,
   )
 
@@ -90,8 +93,16 @@ export async function search(
 
   if (candidates.length === 0) return []
 
+  // Lexical reranking: boost candidates by query-term coverage, phrase match,
+  // and heading/sectionPath alignment. This reorders the pool before the
+  // cross-encoder sees it.
+  const lexicallyReranked = rerank(trimmed, candidates)
+
+  // Take the top candidates for cross-encoder reranking.
+  const ceCandidates = lexicallyReranked.slice(0, RERANK_CANDIDATES_CROSS_ENCODER)
+
   // Cross-encoder reranking (already gated above — this path always runs).
-  const reranked = await rerankWithCrossEncoder(trimmed, candidates)
+  const reranked = await rerankWithCrossEncoder(trimmed, ceCandidates)
 
   // Truncate to maxResults
   const limit = maxResults ?? DEFAULT_MAX_RESULTS

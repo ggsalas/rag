@@ -200,12 +200,11 @@ export const RERANK_CANDIDATES_CROSS_ENCODER = 40
  *
  * If the cross-encoder model fails to load, the search pipeline does NOT
  * execute — the UI shows an error and a retry button. There is no fallback
- * to lexical-only retrieval: the lexical reranker (now in
- * `src/dev/benchmarks/search/rerank.service.ts`) was measured to be an
- * ineffective abstention mechanism (e.g., "Who wrote Hamlet?" passes because
- * "wrote" exists in the corpus), and returning results without the
- * cross-encoder would silently surface irrelevant chunks. The cross-encoder
- * is the only validated abstention mechanism in production.
+ * to lexical-only retrieval: returning results without the cross-encoder
+ * would silently surface irrelevant chunks. The cross-encoder is the only
+ * validated abstention mechanism in production. The lexical reranker
+ * (`src/services/search/rerank.service.ts`) is used as a pre-filter before
+ * cross-encoder reranking, but does not replace it for abstention.
  */
 export const RERANKER_ABSTENTION_THRESHOLD = -6.0
 

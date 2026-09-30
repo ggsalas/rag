@@ -49,7 +49,7 @@ import {
   MIN_ABSOLUTE_SCORE,
   MIN_QUERY_LEXICAL_COVERAGE,
 } from '@/lib/constants'
-import { rerank, computeLexicalCoverage } from './rerank.service'
+import { rerank, computeLexicalCoverage } from '@/services/search/rerank.service'
 import type { SearchResult } from '@/types/search'
 
 const FIXTURE_PATH = resolve(__dirname, '../../fixtures', 'britnet-corpus.json')

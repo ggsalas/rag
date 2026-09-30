@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { search, SearchModelNotReadyError } from './search.service'
 import { RERANK_CANDIDATES_CROSS_ENCODER } from '@/lib/constants'
+import { RERANK_CANDIDATE_POOL } from './rerank.service'
 
 // Mock the embedding service
 vi.mock('@/services/embedding/embedding.service', () => ({
@@ -22,17 +23,25 @@ vi.mock('./cross-encoder-reranker.service', () => ({
   resetRerankerLoadState: vi.fn(),
 }))
 
+// Mock the lexical reranker service
+vi.mock('./rerank.service', () => ({
+  rerank: vi.fn((_query, candidates) => candidates),
+  RERANK_CANDIDATE_POOL: 100,
+}))
+
 import { embed } from '@/services/embedding/embedding.service'
 import { searchHybrid } from '@/services/embedding/vector-store'
 import {
   rerankWithCrossEncoder,
   isRerankerReady,
 } from './cross-encoder-reranker.service'
+import { rerank } from './rerank.service'
 
 const mockEmbed = vi.mocked(embed)
 const mockSearchHybrid = vi.mocked(searchHybrid)
 const mockRerankWithCrossEncoder = vi.mocked(rerankWithCrossEncoder)
 const mockIsRerankerReady = vi.mocked(isRerankerReady)
+const mockRerank = vi.mocked(rerank)
 
 describe('search.service', () => {
   beforeEach(() => {
@@ -110,14 +119,14 @@ describe('search.service', () => {
         'lib-1',
         'test query',
         fakeEmbedding,
-        RERANK_CANDIDATES_CROSS_ENCODER,
+        RERANK_CANDIDATE_POOL,
         undefined,
       )
       expect(results).toHaveLength(1)
       expect(results[0]!.documentName).toBe('test.pdf')
     })
 
-    it('should request at least RERANK_CANDIDATES_CROSS_ENCODER candidates', async () => {
+    it('should request at least RERANK_CANDIDATE_POOL candidates from Orama', async () => {
       const fakeEmbedding = Array(384).fill(0.1)
       mockEmbed.mockResolvedValue(fakeEmbedding)
       mockSearchHybrid.mockResolvedValue([])
@@ -125,17 +134,17 @@ describe('search.service', () => {
 
       await search('query', 'lib-1', 10)
 
-      // maxResults=10 < RERANK_CANDIDATES_CROSS_ENCODER, so pool is expanded
+      // maxResults=10 < RERANK_CANDIDATE_POOL, so pool is expanded to 100
       expect(mockSearchHybrid).toHaveBeenCalledWith(
         'lib-1',
         'query',
         fakeEmbedding,
-        RERANK_CANDIDATES_CROSS_ENCODER,
+        RERANK_CANDIDATE_POOL,
         undefined,
       )
     })
 
-    it('should request maxResults when it exceeds RERANK_CANDIDATES_CROSS_ENCODER', async () => {
+    it('should request maxResults when it exceeds RERANK_CANDIDATE_POOL', async () => {
       const fakeEmbedding = Array(384).fill(0.1)
       mockEmbed.mockResolvedValue(fakeEmbedding)
       mockSearchHybrid.mockResolvedValue([])
@@ -165,7 +174,7 @@ describe('search.service', () => {
         'lib-1',
         'hello world',
         fakeEmbedding,
-        RERANK_CANDIDATES_CROSS_ENCODER,
+        RERANK_CANDIDATE_POOL,
         undefined,
       )
     })
@@ -183,12 +192,60 @@ describe('search.service', () => {
         'lib-1',
         'query',
         fakeEmbedding,
-        RERANK_CANDIDATES_CROSS_ENCODER,
+        RERANK_CANDIDATE_POOL,
         customWeights,
       )
     })
 
-    it('should use cross-encoder reranking directly on candidates', async () => {
+    it('should apply lexical rerank then pass top-40 to cross-encoder', async () => {
+      const fakeEmbedding = Array(384).fill(0.1)
+      mockEmbed.mockResolvedValue(fakeEmbedding)
+
+      // Build 50 hybrid results
+      const hybridResults = Array.from({ length: 50 }, (_, i) => ({
+        chunkId: `c-${i}`,
+        documentId: 'd-1',
+        documentName: 'doc.txt',
+        text: `content ${i}`,
+        searchText: `content ${i}`,
+        sectionPath: [],
+        headingText: '',
+        score: 0.9 - i * 0.01,
+        chunkIndex: i,
+      }))
+      mockSearchHybrid.mockResolvedValue(hybridResults)
+
+      // Lexical rerank reorders: return them reversed
+      const lexicallyReordered = [...hybridResults].reverse()
+      mockRerank.mockReturnValue(lexicallyReordered)
+
+      // Cross-encoder receives the top 40 from the lexically reranked list
+      mockRerankWithCrossEncoder.mockImplementation(async (_q, candidates) =>
+        candidates.map((c) => ({ ...c, rerankScore: 5.0 })),
+      )
+
+      // Request 40 results to see all 40 from the CE pool
+      const results = await search('alpha beta', 'lib-1', 40)
+
+      // Verify lexical rerank was called with all valid candidates
+      expect(mockRerank).toHaveBeenCalledWith('alpha beta', expect.any(Array))
+      expect(mockRerank.mock.calls[0]![1]).toHaveLength(50)
+
+      // Verify cross-encoder received only top 40 from the lexically reranked list
+      expect(mockRerankWithCrossEncoder).toHaveBeenCalledWith(
+        'alpha beta',
+        expect.any(Array),
+      )
+      const ceInput = mockRerankWithCrossEncoder.mock.calls[0]![1]
+      expect(ceInput).toHaveLength(RERANK_CANDIDATES_CROSS_ENCODER)
+      // The first 40 of the reversed list are c-49, c-48, ..., c-10
+      expect(ceInput[0]!.chunkId).toBe('c-49')
+      expect(ceInput[39]!.chunkId).toBe('c-10')
+
+      expect(results).toHaveLength(RERANK_CANDIDATES_CROSS_ENCODER)
+    })
+
+    it('should use cross-encoder reranking on lexically pre-filtered candidates', async () => {
       const fakeEmbedding = Array(384).fill(0.1)
       mockEmbed.mockResolvedValue(fakeEmbedding)
       const hybridResults = [
@@ -205,6 +262,7 @@ describe('search.service', () => {
         },
       ]
       mockSearchHybrid.mockResolvedValue(hybridResults)
+      mockRerank.mockReturnValue(hybridResults)
 
       // Cross-encoder reorders and assigns logits
       mockRerankWithCrossEncoder.mockResolvedValue([
@@ -216,6 +274,7 @@ describe('search.service', () => {
 
       const results = await search('alpha beta', 'lib-1')
 
+      expect(mockRerank).toHaveBeenCalledWith('alpha beta', expect.any(Array))
       expect(mockRerankWithCrossEncoder).toHaveBeenCalledWith('alpha beta', expect.any(Array))
       expect(results).toHaveLength(1)
       expect(results[0]!.rerankScore).toBe(5.5)
@@ -379,7 +438,7 @@ describe('search.service', () => {
     it('should drop candidates with empty text before reranking', async () => {
       const fakeEmbedding = Array(384).fill(0.1)
       mockEmbed.mockResolvedValue(fakeEmbedding)
-      mockSearchHybrid.mockResolvedValue([
+      const hybridResults = [
         {
           chunkId: 'c-empty',
           documentId: 'd-1',
@@ -402,7 +461,12 @@ describe('search.service', () => {
           score: 0.8,
           chunkIndex: 1,
         },
-      ])
+      ]
+      mockSearchHybrid.mockResolvedValue(hybridResults)
+
+      // Lexical rerank returns the filtered candidates (only c-valid after empty-chunk filter)
+      const validCandidates = hybridResults.filter((r) => r.text.trim().length > 0)
+      mockRerank.mockReturnValue(validCandidates)
 
       mockRerankWithCrossEncoder.mockResolvedValue([
         {
