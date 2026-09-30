@@ -2,11 +2,18 @@ import { useState, useRef, useEffect, type FormEvent } from 'react'
 import { X, Sparkles } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import type { ModelStatus } from '@/store/app.store'
+import type { SearchModelsStatus } from '@/hooks/useSearchModels'
 
 interface SearchBarProps {
   onSearch: (query: string) => void
   isSearching: boolean
-  embeddingStatus: ModelStatus
+  /** @deprecated Use `searchModelsStatus` instead. Retained for backward compat during transition. */
+  embeddingStatus?: ModelStatus
+  /** Combined status of embedding + cross-encoder models. Search is blocked unless `ready`. */
+  searchModelsStatus: SearchModelsStatus
+  /** Per-model statuses for granular progress messages. */
+  embeddingStatusDetailed: ModelStatus
+  rerankerStatusDetailed: ModelStatus
   initialQuery?: string
   maxResults?: number
   onMaxResultsChange?: (n: number) => void
@@ -15,11 +22,14 @@ interface SearchBarProps {
   onAiModeToggle?: () => void
   llmMaxTokens?: number
   onLlmMaxTokensChange?: (n: number) => void
+  onRetryModels?: () => void
 }
 
 export function SearchBar({
   onSearch,
-  embeddingStatus,
+  searchModelsStatus,
+  embeddingStatusDetailed,
+  rerankerStatusDetailed,
   initialQuery = '',
   maxResults,
   onMaxResultsChange,
@@ -28,6 +38,7 @@ export function SearchBar({
   onAiModeToggle,
   llmMaxTokens,
   onLlmMaxTokensChange,
+  onRetryModels,
 }: SearchBarProps) {
   const [inputValue, setInputValue] = useState(initialQuery)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -48,7 +59,7 @@ export function SearchBar({
     inputRef.current?.focus()
   }
 
-  const isDisabled = embeddingStatus !== 'ready'
+  const isDisabled = searchModelsStatus !== 'ready'
   const hasText = inputValue.trim().length > 0
   const showConfig = maxResults !== undefined || !!onAiModeToggle
 
@@ -82,7 +93,7 @@ export function SearchBar({
               onChange={(e) => setInputValue(e.target.value)}
               placeholder={
                 isDisabled
-                  ? 'Waiting for embedding model to load...'
+                  ? 'Waiting for search models to load...'
                   : 'Search your documents...'
               }
               disabled={isDisabled}
@@ -181,16 +192,37 @@ export function SearchBar({
         </div>
       </div>
 
-      {embeddingStatus === 'loading' && (
-        <p className="mt-2 text-sm text-muted-foreground">
-          Loading embedding model... Search will be available once the model is
-          ready.
-        </p>
+      {searchModelsStatus === 'loading' && (
+        <div className="mt-2 space-y-1 text-sm text-muted-foreground">
+          {embeddingStatusDetailed === 'loading' && (
+            <p>Loading embedding model… Search will be available once all models are ready.</p>
+          )}
+          {rerankerStatusDetailed === 'loading' && (
+            <p>Loading cross-encoder reranker model…</p>
+          )}
+        </div>
       )}
-      {embeddingStatus === 'error' && (
-        <p className="mt-2 text-sm text-foreground">
-          Embedding model failed to load. Search is unavailable.
-        </p>
+      {searchModelsStatus === 'error' && (
+        <div className="mt-2 space-y-1">
+          <p className="text-sm text-foreground">
+            Search is unavailable — one or more models failed to load.
+          </p>
+          {embeddingStatusDetailed === 'error' && (
+            <p className="text-xs text-foreground">• Embedding model failed.</p>
+          )}
+          {rerankerStatusDetailed === 'error' && (
+            <p className="text-xs text-foreground">• Cross-encoder reranker model failed.</p>
+          )}
+          {onRetryModels && (
+            <button
+              type="button"
+              onClick={onRetryModels}
+              className="mt-1 text-sm text-primary underline hover:text-primary-hover"
+            >
+              Retry loading models
+            </button>
+          )}
+        </div>
       )}
     </div>
   )

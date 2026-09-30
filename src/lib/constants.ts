@@ -198,14 +198,14 @@ export const RERANK_CANDIDATES_CROSS_ENCODER = 40
  *
  * DEGRADATION POLICY:
  *
- * If the cross-encoder model fails to load or is unavailable, the search
- * pipeline falls back to the lexical reranker (rerank.service.ts) and applies
- * NO abstention threshold. This is a deliberate trade-off: we prefer to return
- * potentially irrelevant results over returning nothing, because the lexical
- * gate (MIN_QUERY_LEXICAL_COVERAGE) was measured to be ineffective (e.g.,
- * "Who wrote Hamlet?" passes because "wrote" exists in the corpus). The
- * cross-encoder is the only validated abstention mechanism; without it, we
- * have no reliable signal.
+ * If the cross-encoder model fails to load, the search pipeline does NOT
+ * execute — the UI shows an error and a retry button. There is no fallback
+ * to lexical-only retrieval: the lexical reranker (now in
+ * `src/dev/benchmarks/search/rerank.service.ts`) was measured to be an
+ * ineffective abstention mechanism (e.g., "Who wrote Hamlet?" passes because
+ * "wrote" exists in the corpus), and returning results without the
+ * cross-encoder would silently surface irrelevant chunks. The cross-encoder
+ * is the only validated abstention mechanism in production.
  */
 export const RERANKER_ABSTENTION_THRESHOLD = -6.0
 

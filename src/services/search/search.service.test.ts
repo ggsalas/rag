@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { search } from './search.service'
-import { RERANK_CANDIDATE_POOL } from './rerank.service'
+import { search, SearchModelNotReadyError } from './search.service'
+import { RERANK_CANDIDATES_CROSS_ENCODER } from '@/lib/constants'
 
 // Mock the embedding service
 vi.mock('@/services/embedding/embedding.service', () => ({
@@ -16,8 +16,10 @@ vi.mock('@/services/embedding/vector-store', () => ({
 // Mock the cross-encoder reranker service
 vi.mock('./cross-encoder-reranker.service', () => ({
   rerankWithCrossEncoder: vi.fn((_query, candidates) => Promise.resolve(candidates)),
-  isRerankerReady: vi.fn(() => false),
-  loadRerankerModel: vi.fn(() => Promise.resolve(false)),
+  isRerankerReady: vi.fn(() => true),
+  loadRerankerModel: vi.fn(() => Promise.resolve(true)),
+  isRerankerDegraded: vi.fn(() => false),
+  resetRerankerLoadState: vi.fn(),
 }))
 
 import { embed } from '@/services/embedding/embedding.service'
@@ -25,172 +27,171 @@ import { searchHybrid } from '@/services/embedding/vector-store'
 import {
   rerankWithCrossEncoder,
   isRerankerReady,
-  loadRerankerModel,
 } from './cross-encoder-reranker.service'
 
 const mockEmbed = vi.mocked(embed)
 const mockSearchHybrid = vi.mocked(searchHybrid)
 const mockRerankWithCrossEncoder = vi.mocked(rerankWithCrossEncoder)
 const mockIsRerankerReady = vi.mocked(isRerankerReady)
-const mockLoadRerankerModel = vi.mocked(loadRerankerModel)
 
 describe('search.service', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    // Default: cross-encoder not ready (degraded mode)
-    mockIsRerankerReady.mockReturnValue(false)
-    mockLoadRerankerModel.mockResolvedValue(false)
+    // Default: cross-encoder ready
+    mockIsRerankerReady.mockReturnValue(true)
   })
 
-  it('should return empty array for empty query', async () => {
-    const results = await search('', 'lib-1')
-    expect(results).toEqual([])
-    expect(mockEmbed).not.toHaveBeenCalled()
+  describe('empty query handling', () => {
+    it('should return empty array for empty query', async () => {
+      const results = await search('', 'lib-1')
+      expect(results).toEqual([])
+      expect(mockEmbed).not.toHaveBeenCalled()
+    })
+
+    it('should return empty array for whitespace-only query', async () => {
+      const results = await search('   ', 'lib-1')
+      expect(results).toEqual([])
+      expect(mockEmbed).not.toHaveBeenCalled()
+    })
   })
 
-  it('should return empty array for whitespace-only query', async () => {
-    const results = await search('   ', 'lib-1')
-    expect(results).toEqual([])
-    expect(mockEmbed).not.toHaveBeenCalled()
+  describe('cross-encoder gate', () => {
+    it('should throw SearchModelNotReadyError when cross-encoder is not ready', async () => {
+      mockIsRerankerReady.mockReturnValue(false)
+      await expect(search('test', 'lib-1')).rejects.toThrow(SearchModelNotReadyError)
+      await expect(search('test', 'lib-1')).rejects.toThrow(/Cross-encoder model is not ready/)
+      // Embedding should not even be called — gate fires first
+      expect(mockEmbed).not.toHaveBeenCalled()
+    })
+
+    it('should not call searchHybrid when cross-encoder is not ready', async () => {
+      mockIsRerankerReady.mockReturnValue(false)
+      await expect(search('test', 'lib-1')).rejects.toThrow()
+      expect(mockSearchHybrid).not.toHaveBeenCalled()
+    })
   })
 
-  it('should embed query and perform hybrid search', async () => {
-    const fakeEmbedding = Array(384).fill(0.1)
-    mockEmbed.mockResolvedValue(fakeEmbedding)
-    mockSearchHybrid.mockResolvedValue([
-      {
-        chunkId: 'chunk-1',
-        documentId: 'doc-1',
-        documentName: 'test.pdf',
-        text: 'sample test query text',
-        searchText: 'sample test query text',
-        sectionPath: [],
-        headingText: '',
-        score: 0.95,
-        chunkIndex: 0,
-      },
-    ])
-
-    const results = await search('test query', 'lib-1')
-
-    expect(mockEmbed).toHaveBeenCalledWith('test query')
-    expect(mockSearchHybrid).toHaveBeenCalledWith(
-      'lib-1',
-      'test query',
-      fakeEmbedding,
-      RERANK_CANDIDATE_POOL,
-      undefined,
-    )
-    expect(results).toHaveLength(1)
-    expect(results[0]!.documentName).toBe('test.pdf')
-    expect(results[0]!.score).toBe(0.95)
-  })
-
-  it('should request at least RERANK_CANDIDATE_POOL candidates from hybrid search', async () => {
-    const fakeEmbedding = Array(384).fill(0.1)
-    mockEmbed.mockResolvedValue(fakeEmbedding)
-    mockSearchHybrid.mockResolvedValue([])
-
-    await search('query', 'lib-1', 10)
-
-    // maxResults=10 < RERANK_CANDIDATE_POOL, so candidate pool is expanded
-    expect(mockSearchHybrid).toHaveBeenCalledWith(
-      'lib-1',
-      'query',
-      fakeEmbedding,
-      RERANK_CANDIDATE_POOL,
-      undefined,
-    )
-  })
-
-  it('should request maxResults when it exceeds RERANK_CANDIDATE_POOL', async () => {
-    const fakeEmbedding = Array(384).fill(0.1)
-    mockEmbed.mockResolvedValue(fakeEmbedding)
-    mockSearchHybrid.mockResolvedValue([])
-
-    await search('query', 'lib-1', 150)
-
-    expect(mockSearchHybrid).toHaveBeenCalledWith(
-      'lib-1',
-      'query',
-      fakeEmbedding,
-      150,
-      undefined,
-    )
-  })
-
-  it('should trim query before embedding', async () => {
-    const fakeEmbedding = Array(384).fill(0.1)
-    mockEmbed.mockResolvedValue(fakeEmbedding)
-    mockSearchHybrid.mockResolvedValue([])
-
-    await search('  hello world  ', 'lib-1')
-
-    expect(mockEmbed).toHaveBeenCalledWith('hello world')
-    expect(mockSearchHybrid).toHaveBeenCalledWith(
-      'lib-1',
-      'hello world',
-      fakeEmbedding,
-      RERANK_CANDIDATE_POOL,
-      undefined,
-    )
-  })
-
-  it('should return results with correct SearchResult shape', async () => {
-    const fakeEmbedding = Array(384).fill(0.1)
-    mockEmbed.mockResolvedValue(fakeEmbedding)
-    mockSearchHybrid.mockResolvedValue([
-      {
-        chunkId: 'c-1',
-        documentId: 'd-1',
-        documentName: 'doc.txt',
-        text: 'some text',
-        searchText: 'some text',
-        sectionPath: ['Section'],
-        headingText: 'Section',
-        score: 0.8,
-        chunkIndex: 2,
-      },
-    ])
-
-    const results = await search('some text', 'lib-1')
-
-    expect(results[0]!.chunkId).toBe('c-1')
-    expect(results[0]!.documentId).toBe('d-1')
-    expect(results[0]!.documentName).toBe('doc.txt')
-    expect(results[0]!.text).toBe('some text')
-    expect(results[0]!.searchText).toBe('some text')
-    expect(results[0]!.sectionPath).toEqual(['Section'])
-    expect(results[0]!.headingText).toBe('Section')
-    expect(results[0]!.score).toBe(0.8)
-    expect(results[0]!.chunkIndex).toBe(2)
-    // coverage=1 (both tokens found) + phrase=1 → 0.8*(1+0.15+0.20) = 1.08
-    expect(results[0]!.rerankScore).toBeCloseTo(1.08)
-  })
-
-  it('should pass custom weights to hybrid search', async () => {
-    const fakeEmbedding = Array(384).fill(0.1)
-    mockEmbed.mockResolvedValue(fakeEmbedding)
-    mockSearchHybrid.mockResolvedValue([])
-
-    const customWeights = { text: 0.3, vector: 0.7 }
-    await search('query', 'lib-1', undefined, customWeights)
-
-    expect(mockSearchHybrid).toHaveBeenCalledWith(
-      'lib-1',
-      'query',
-      fakeEmbedding,
-      RERANK_CANDIDATE_POOL,
-      customWeights,
-    )
-  })
-
-  describe('cross-encoder integration', () => {
-    it('should use cross-encoder when loaded', async () => {
-      mockIsRerankerReady.mockReturnValue(true)
+  describe('pipeline (cross-encoder ready)', () => {
+    it('should embed query and perform hybrid search', async () => {
       const fakeEmbedding = Array(384).fill(0.1)
       mockEmbed.mockResolvedValue(fakeEmbedding)
       mockSearchHybrid.mockResolvedValue([
+        {
+          chunkId: 'chunk-1',
+          documentId: 'doc-1',
+          documentName: 'test.pdf',
+          text: 'sample test query text',
+          searchText: 'sample test query text',
+          sectionPath: [],
+          headingText: '',
+          score: 0.95,
+          chunkIndex: 0,
+        },
+      ])
+      mockRerankWithCrossEncoder.mockResolvedValue([
+        {
+          chunkId: 'chunk-1',
+          documentId: 'doc-1',
+          documentName: 'test.pdf',
+          text: 'sample test query text',
+          searchText: 'sample test query text',
+          sectionPath: [],
+          headingText: '',
+          score: 0.95,
+          chunkIndex: 0,
+          rerankScore: 5.0,
+        },
+      ])
+
+      const results = await search('test query', 'lib-1')
+
+      expect(mockEmbed).toHaveBeenCalledWith('test query')
+      expect(mockSearchHybrid).toHaveBeenCalledWith(
+        'lib-1',
+        'test query',
+        fakeEmbedding,
+        RERANK_CANDIDATES_CROSS_ENCODER,
+        undefined,
+      )
+      expect(results).toHaveLength(1)
+      expect(results[0]!.documentName).toBe('test.pdf')
+    })
+
+    it('should request at least RERANK_CANDIDATES_CROSS_ENCODER candidates', async () => {
+      const fakeEmbedding = Array(384).fill(0.1)
+      mockEmbed.mockResolvedValue(fakeEmbedding)
+      mockSearchHybrid.mockResolvedValue([])
+      mockRerankWithCrossEncoder.mockResolvedValue([])
+
+      await search('query', 'lib-1', 10)
+
+      // maxResults=10 < RERANK_CANDIDATES_CROSS_ENCODER, so pool is expanded
+      expect(mockSearchHybrid).toHaveBeenCalledWith(
+        'lib-1',
+        'query',
+        fakeEmbedding,
+        RERANK_CANDIDATES_CROSS_ENCODER,
+        undefined,
+      )
+    })
+
+    it('should request maxResults when it exceeds RERANK_CANDIDATES_CROSS_ENCODER', async () => {
+      const fakeEmbedding = Array(384).fill(0.1)
+      mockEmbed.mockResolvedValue(fakeEmbedding)
+      mockSearchHybrid.mockResolvedValue([])
+      mockRerankWithCrossEncoder.mockResolvedValue([])
+
+      await search('query', 'lib-1', 150)
+
+      expect(mockSearchHybrid).toHaveBeenCalledWith(
+        'lib-1',
+        'query',
+        fakeEmbedding,
+        150,
+        undefined,
+      )
+    })
+
+    it('should trim query before embedding', async () => {
+      const fakeEmbedding = Array(384).fill(0.1)
+      mockEmbed.mockResolvedValue(fakeEmbedding)
+      mockSearchHybrid.mockResolvedValue([])
+      mockRerankWithCrossEncoder.mockResolvedValue([])
+
+      await search('  hello world  ', 'lib-1')
+
+      expect(mockEmbed).toHaveBeenCalledWith('hello world')
+      expect(mockSearchHybrid).toHaveBeenCalledWith(
+        'lib-1',
+        'hello world',
+        fakeEmbedding,
+        RERANK_CANDIDATES_CROSS_ENCODER,
+        undefined,
+      )
+    })
+
+    it('should pass custom weights to hybrid search', async () => {
+      const fakeEmbedding = Array(384).fill(0.1)
+      mockEmbed.mockResolvedValue(fakeEmbedding)
+      mockSearchHybrid.mockResolvedValue([])
+      mockRerankWithCrossEncoder.mockResolvedValue([])
+
+      const customWeights = { text: 0.3, vector: 0.7 }
+      await search('query', 'lib-1', undefined, customWeights)
+
+      expect(mockSearchHybrid).toHaveBeenCalledWith(
+        'lib-1',
+        'query',
+        fakeEmbedding,
+        RERANK_CANDIDATES_CROSS_ENCODER,
+        customWeights,
+      )
+    })
+
+    it('should use cross-encoder reranking directly on candidates', async () => {
+      const fakeEmbedding = Array(384).fill(0.1)
+      mockEmbed.mockResolvedValue(fakeEmbedding)
+      const hybridResults = [
         {
           chunkId: 'c-1',
           documentId: 'd-1',
@@ -202,21 +203,14 @@ describe('search.service', () => {
           score: 0.8,
           chunkIndex: 0,
         },
-      ])
+      ]
+      mockSearchHybrid.mockResolvedValue(hybridResults)
 
-      // Mock cross-encoder to return reranked results with logit scores
+      // Cross-encoder reorders and assigns logits
       mockRerankWithCrossEncoder.mockResolvedValue([
         {
-          chunkId: 'c-1',
-          documentId: 'd-1',
-          documentName: 'doc.txt',
-          text: 'alpha beta',
-          searchText: 'alpha beta',
-          sectionPath: [],
-          headingText: '',
-          score: 0.8,
-          chunkIndex: 0,
-          rerankScore: 5.5, // logit from cross-encoder
+          ...hybridResults[0]!,
+          rerankScore: 5.5,
         },
       ])
 
@@ -226,9 +220,10 @@ describe('search.service', () => {
       expect(results).toHaveLength(1)
       expect(results[0]!.rerankScore).toBe(5.5)
     })
+  })
 
-    it('should abstain when cross-encoder logit is below threshold', async () => {
-      mockIsRerankerReady.mockReturnValue(true)
+  describe('abstention by cross-encoder logit threshold (-6.0)', () => {
+    it('should abstain when all cross-encoder logits are below -6.0', async () => {
       const fakeEmbedding = Array(384).fill(0.1)
       mockEmbed.mockResolvedValue(fakeEmbedding)
       mockSearchHybrid.mockResolvedValue([
@@ -245,7 +240,7 @@ describe('search.service', () => {
         },
       ])
 
-      // Mock cross-encoder to return low logit (irrelevant)
+      // Cross-encoder returns low logit (irrelevant)
       mockRerankWithCrossEncoder.mockResolvedValue([
         {
           chunkId: 'c-1',
@@ -257,18 +252,15 @@ describe('search.service', () => {
           headingText: '',
           score: 0.9,
           chunkIndex: 0,
-          rerankScore: -7.0, // below threshold (-6.0) = irrelevant
+          rerankScore: -7.0, // below -6.0 threshold
         },
       ])
 
       const results = await search('alpha beta gamma', 'lib-1')
-
-      // All results have logit < -6.0 (RERANKER_ABSTENTION_THRESHOLD) → abstain
       expect(results).toHaveLength(0)
     })
 
-    it('should not abstain when at least one result has logit >= threshold', async () => {
-      mockIsRerankerReady.mockReturnValue(true)
+    it('should NOT abstain when at least one result has logit >= -6.0', async () => {
       const fakeEmbedding = Array(384).fill(0.1)
       mockEmbed.mockResolvedValue(fakeEmbedding)
       mockSearchHybrid.mockResolvedValue([
@@ -296,7 +288,6 @@ describe('search.service', () => {
         },
       ])
 
-      // Mock cross-encoder: c-1 is relevant (logit=5.0), c-2 is not (logit=-3.0)
       mockRerankWithCrossEncoder.mockResolvedValue([
         {
           chunkId: 'c-1',
@@ -325,15 +316,11 @@ describe('search.service', () => {
       ])
 
       const results = await search('alpha beta', 'lib-1')
-
-      // c-1 has logit -3.0 >= -6.0 (RERANKER_ABSTENTION_THRESHOLD) → no abstention, both results returned
+      // c-1 has logit 5.0 >= -6.0 → no abstention
       expect(results).toHaveLength(2)
     })
-  })
 
-  describe('graceful degradation', () => {
-    it('should return results without cross-encoder when model is not loaded', async () => {
-      mockIsRerankerReady.mockReturnValue(false)
+    it('should abstain when logit is exactly at boundary (-6.0 passes, -6.01 does not)', async () => {
       const fakeEmbedding = Array(384).fill(0.1)
       mockEmbed.mockResolvedValue(fakeEmbedding)
       mockSearchHybrid.mockResolvedValue([
@@ -341,110 +328,149 @@ describe('search.service', () => {
           chunkId: 'c-1',
           documentId: 'd-1',
           documentName: 'doc.txt',
-          text: 'alpha beta',
-          searchText: 'alpha beta',
-          sectionPath: [],
-          headingText: '',
-          score: 0.8,
-          chunkIndex: 0,
-        },
-      ])
-
-      const results = await search('alpha beta', 'lib-1')
-
-      // Cross-encoder not ready → use lexical reranker only, no abstention
-      expect(mockRerankWithCrossEncoder).not.toHaveBeenCalled()
-      expect(results).toHaveLength(1)
-      expect(results[0]!.rerankScore).toBeCloseTo(1.08) // lexical reranker boost
-    })
-
-    it('should attempt to load cross-encoder on first search when not loaded', async () => {
-      mockIsRerankerReady.mockReturnValue(false)
-      const fakeEmbedding = Array(384).fill(0.1)
-      mockEmbed.mockResolvedValue(fakeEmbedding)
-      mockSearchHybrid.mockResolvedValue([
-        {
-          chunkId: 'c-1',
-          documentId: 'd-1',
-          documentName: 'doc.txt',
-          text: 'alpha beta',
-          searchText: 'alpha beta',
-          sectionPath: [],
-          headingText: '',
-          score: 0.8,
-          chunkIndex: 0,
-        },
-      ])
-
-      await search('alpha beta', 'lib-1')
-
-      // Should attempt to load (non-blocking)
-      expect(mockLoadRerankerModel).toHaveBeenCalled()
-    })
-
-    it('should not block search if cross-encoder load fails', async () => {
-      mockIsRerankerReady.mockReturnValue(false)
-      mockLoadRerankerModel.mockRejectedValue(new Error('Load failed'))
-      const fakeEmbedding = Array(384).fill(0.1)
-      mockEmbed.mockResolvedValue(fakeEmbedding)
-      mockSearchHybrid.mockResolvedValue([
-        {
-          chunkId: 'c-1',
-          documentId: 'd-1',
-          documentName: 'doc.txt',
-          text: 'alpha beta',
-          searchText: 'alpha beta',
-          sectionPath: [],
-          headingText: '',
-          score: 0.8,
-          chunkIndex: 0,
-        },
-      ])
-
-      // Should not throw, should return results
-      const results = await search('alpha beta', 'lib-1')
-      expect(results).toHaveLength(1)
-    })
-  })
-
-  describe('reranking integration', () => {
-    it('should reorder results based on query-term coverage (lexical reranker)', async () => {
-      const fakeEmbedding = Array(384).fill(0.1)
-      mockEmbed.mockResolvedValue(fakeEmbedding)
-      // c-1 has higher Orama score but no query terms; c-2 has lower Orama score but all query terms
-      mockSearchHybrid.mockResolvedValue([
-        {
-          chunkId: 'c-1',
-          documentId: 'd-1',
-          documentName: 'doc.txt',
-          text: 'unrelated content',
-          searchText: 'unrelated content',
+          text: 'content',
+          searchText: 'content',
           sectionPath: [],
           headingText: '',
           score: 0.9,
           chunkIndex: 0,
         },
+      ])
+
+      // Exactly at threshold → passes
+      mockRerankWithCrossEncoder.mockResolvedValue([
         {
-          chunkId: 'c-2',
+          chunkId: 'c-1',
           documentId: 'd-1',
           documentName: 'doc.txt',
-          text: 'alpha beta gamma',
+          text: 'content',
+          searchText: 'content',
+          sectionPath: [],
+          headingText: '',
+          score: 0.9,
+          chunkIndex: 0,
+          rerankScore: -6.0,
+        },
+      ])
+      const resultsAt = await search('query', 'lib-1')
+      expect(resultsAt).toHaveLength(1)
+
+      // Just below threshold → abstains
+      mockRerankWithCrossEncoder.mockResolvedValue([
+        {
+          chunkId: 'c-1',
+          documentId: 'd-1',
+          documentName: 'doc.txt',
+          text: 'content',
+          searchText: 'content',
+          sectionPath: [],
+          headingText: '',
+          score: 0.9,
+          chunkIndex: 0,
+          rerankScore: -6.01,
+        },
+      ])
+      const resultsBelow = await search('query', 'lib-1')
+      expect(resultsBelow).toHaveLength(0)
+    })
+  })
+
+  describe('empty-chunk guard', () => {
+    it('should drop candidates with empty text before reranking', async () => {
+      const fakeEmbedding = Array(384).fill(0.1)
+      mockEmbed.mockResolvedValue(fakeEmbedding)
+      mockSearchHybrid.mockResolvedValue([
+        {
+          chunkId: 'c-empty',
+          documentId: 'd-1',
+          documentName: 'doc.txt',
+          text: '',
           searchText: 'alpha beta gamma',
           sectionPath: [],
           headingText: '',
-          score: 0.85,
+          score: 0.95,
+          chunkIndex: 0,
+        },
+        {
+          chunkId: 'c-valid',
+          documentId: 'd-1',
+          documentName: 'doc.txt',
+          text: 'alpha beta gamma content',
+          searchText: 'alpha beta gamma content',
+          sectionPath: [],
+          headingText: '',
+          score: 0.8,
+          chunkIndex: 1,
+        },
+      ])
+
+      mockRerankWithCrossEncoder.mockResolvedValue([
+        {
+          chunkId: 'c-valid',
+          documentId: 'd-1',
+          documentName: 'doc.txt',
+          text: 'alpha beta gamma content',
+          searchText: 'alpha beta gamma content',
+          sectionPath: [],
+          headingText: '',
+          score: 0.8,
+          chunkIndex: 1,
+          rerankScore: 5.0,
+        },
+      ])
+
+      const results = await search('alpha beta gamma', 'lib-1')
+
+      expect(results).toHaveLength(1)
+      expect(results[0]!.chunkId).toBe('c-valid')
+      // Cross-encoder should only receive the valid candidate
+      expect(mockRerankWithCrossEncoder).toHaveBeenCalledWith(
+        'alpha beta gamma',
+        expect.arrayContaining([expect.objectContaining({ chunkId: 'c-valid' })]),
+      )
+      expect(mockRerankWithCrossEncoder).toHaveBeenCalledWith(
+        'alpha beta gamma',
+        expect.not.arrayContaining([expect.objectContaining({ chunkId: 'c-empty' })]),
+      )
+    })
+
+    it('should return empty when all candidates are empty-text chunks', async () => {
+      const fakeEmbedding = Array(384).fill(0.1)
+      mockEmbed.mockResolvedValue(fakeEmbedding)
+      mockSearchHybrid.mockResolvedValue([
+        {
+          chunkId: 'c-empty-1',
+          documentId: 'd-1',
+          documentName: 'doc.txt',
+          text: '',
+          searchText: '',
+          sectionPath: [],
+          headingText: '',
+          score: 0.95,
+          chunkIndex: 0,
+        },
+        {
+          chunkId: 'c-empty-2',
+          documentId: 'd-1',
+          documentName: 'doc.txt',
+          text: '   ',
+          searchText: '   ',
+          sectionPath: [],
+          headingText: '',
+          score: 0.9,
           chunkIndex: 1,
         },
       ])
 
       const results = await search('alpha beta gamma', 'lib-1')
 
-      // c-2 should be first because it has full query-term coverage
-      expect(results[0]!.chunkId).toBe('c-2')
-      expect(results[0]!.rerankScore).toBeGreaterThan(results[1]!.rerankScore!)
+      expect(results).toHaveLength(0)
+      expect(mockRerankWithCrossEncoder).not.toHaveBeenCalled()
     })
+  })
 
-    it('should truncate to maxResults after reranking', async () => {
+  describe('truncation', () => {
+    it('should truncate to maxResults after cross-encoder reranking', async () => {
       const fakeEmbedding = Array(384).fill(0.1)
       mockEmbed.mockResolvedValue(fakeEmbedding)
       mockSearchHybrid.mockResolvedValue([
@@ -483,102 +509,14 @@ describe('search.service', () => {
         },
       ])
 
+      mockRerankWithCrossEncoder.mockResolvedValue([
+        { chunkId: 'c-1', documentId: 'd-1', documentName: 'doc.txt', text: 'alpha content', searchText: 'alpha content', sectionPath: [], headingText: '', score: 0.9, chunkIndex: 0, rerankScore: 5.0 },
+        { chunkId: 'c-2', documentId: 'd-1', documentName: 'doc.txt', text: 'alpha more', searchText: 'alpha more', sectionPath: [], headingText: '', score: 0.88, chunkIndex: 1, rerankScore: 4.0 },
+        { chunkId: 'c-3', documentId: 'd-1', documentName: 'doc.txt', text: 'alpha extra', searchText: 'alpha extra', sectionPath: [], headingText: '', score: 0.85, chunkIndex: 2, rerankScore: 3.0 },
+      ])
+
       const results = await search('alpha', 'lib-1', 2)
-
       expect(results).toHaveLength(2)
-    })
-
-    it('should preserve original Orama score and add rerankScore', async () => {
-      const fakeEmbedding = Array(384).fill(0.1)
-      mockEmbed.mockResolvedValue(fakeEmbedding)
-      mockSearchHybrid.mockResolvedValue([
-        {
-          chunkId: 'c-1',
-          documentId: 'd-1',
-          documentName: 'doc.txt',
-          text: 'alpha beta',
-          searchText: 'alpha beta',
-          sectionPath: [],
-          headingText: '',
-          score: 0.8,
-          chunkIndex: 0,
-        },
-      ])
-
-      const results = await search('alpha beta', 'lib-1')
-
-      expect(results[0]!.score).toBe(0.8) // original Orama score preserved
-      expect(results[0]!.rerankScore).toBeDefined()
-      expect(results[0]!.rerankScore).toBeGreaterThan(0.8) // boosted by coverage + phrase
-    })
-  })
-
-  describe('empty-chunk guard', () => {
-    it('should drop candidates with empty text before reranking', async () => {
-      const fakeEmbedding = Array(384).fill(0.1)
-      mockEmbed.mockResolvedValue(fakeEmbedding)
-      mockSearchHybrid.mockResolvedValue([
-        {
-          chunkId: 'c-empty',
-          documentId: 'd-1',
-          documentName: 'doc.txt',
-          text: '',
-          searchText: 'alpha beta gamma',
-          sectionPath: [],
-          headingText: '',
-          score: 0.95,
-          chunkIndex: 0,
-        },
-        {
-          chunkId: 'c-valid',
-          documentId: 'd-1',
-          documentName: 'doc.txt',
-          text: 'alpha beta gamma content',
-          searchText: 'alpha beta gamma content',
-          sectionPath: [],
-          headingText: '',
-          score: 0.8,
-          chunkIndex: 1,
-        },
-      ])
-
-      const results = await search('alpha beta gamma', 'lib-1')
-
-      expect(results).toHaveLength(1)
-      expect(results[0]!.chunkId).toBe('c-valid')
-    })
-
-    it('should return empty when all candidates are empty-text chunks', async () => {
-      const fakeEmbedding = Array(384).fill(0.1)
-      mockEmbed.mockResolvedValue(fakeEmbedding)
-      mockSearchHybrid.mockResolvedValue([
-        {
-          chunkId: 'c-empty-1',
-          documentId: 'd-1',
-          documentName: 'doc.txt',
-          text: '',
-          searchText: '',
-          sectionPath: [],
-          headingText: '',
-          score: 0.95,
-          chunkIndex: 0,
-        },
-        {
-          chunkId: 'c-empty-2',
-          documentId: 'd-1',
-          documentName: 'doc.txt',
-          text: '   ',
-          searchText: '   ',
-          sectionPath: [],
-          headingText: '',
-          score: 0.9,
-          chunkIndex: 1,
-        },
-      ])
-
-      const results = await search('alpha beta gamma', 'lib-1')
-
-      expect(results).toHaveLength(0)
     })
   })
 })

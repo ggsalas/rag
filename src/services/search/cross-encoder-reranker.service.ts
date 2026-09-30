@@ -63,6 +63,19 @@ export function isRerankerDegraded(): boolean {
 }
 
 /**
+ * Resets the load state so a failed load can be retried.
+ *
+ * After a failed load, `loadRerankerModel` returns `false` immediately without
+ * retrying. Calling this clears the failure flag and the cached promise so the
+ * next call to `loadRerankerModel` attempts a fresh load.
+ */
+export function resetRerankerLoadState(): void {
+  loadPromise = null
+  loadFailed = false
+  // isLoaded stays as-is — if it was true, the model is still usable.
+}
+
+/**
  * Reranks a list of search results using the cross-encoder model.
  *
  * For each candidate, computes a relevance score by scoring the pair

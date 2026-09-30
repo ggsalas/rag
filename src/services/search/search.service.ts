@@ -6,28 +6,38 @@ import {
   RERANKER_ABSTENTION_THRESHOLD,
 } from '@/lib/constants'
 import type { SearchResult, HybridWeights } from '@/types/search'
-import { rerank, RERANK_CANDIDATE_POOL } from './rerank.service'
 import {
   rerankWithCrossEncoder,
   isRerankerReady,
-  loadRerankerModel,
 } from './cross-encoder-reranker.service'
 
 /**
- * Performs hybrid search (BM25 + semantic) within a library.
+ * Error thrown when the search pipeline cannot run because a required model
+ * is not ready. The UI layer should catch this and surface a retry action.
+ */
+export class SearchModelNotReadyError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'SearchModelNotReadyError'
+  }
+}
+
+/**
+ * Performs hybrid search (BM25 + semantic) within a library, followed by
+ * cross-encoder reranking.
  *
  * Pipeline:
- *   1. Embed query and retrieve RERANK_CANDIDATE_POOL candidates from Orama
- *   2. Filter empty chunks
- *   3. Apply lexical/metadata reranker (always active, fast)
- *   4. Take top RERANK_CANDIDATES_CROSS_ENCODER candidates
- *   5. Apply cross-encoder reranker (if loaded; graceful degradation otherwise)
- *   6. Truncate to maxResults
- *   7. Abstention: if cross-encoder is loaded, filter by RERANKER_ABSTENTION_THRESHOLD
+ *   1. Embed query
+ *   2. Retrieve RERANK_CANDIDATES_CROSS_ENCODER candidates from Orama (hybrid)
+ *   3. Filter empty chunks
+ *   4. Rerank with cross-encoder (MUST be loaded — no fallback)
+ *   5. Truncate to maxResults
+ *   6. Abstention: filter by RERANKER_ABSTENTION_THRESHOLD (logit -6.0)
  *
- * The cross-encoder is loaded on demand (first search that triggers it). If it
- * fails to load, the pipeline degrades gracefully: results are returned using
- * the lexical reranker only, with no abstention threshold.
+ * If either the embedding model or the cross-encoder is not ready, the
+ * function throws a `SearchModelNotReadyError`. There is NO degraded-mode
+ * fallback: the cross-encoder is the only validated abstention mechanism,
+ * and returning results without it would silently surface irrelevant chunks.
  */
 export async function search(
   query: string,
@@ -38,10 +48,22 @@ export async function search(
   const trimmed = query.trim()
   if (!trimmed) return []
 
+  // Gate: both embedding and cross-encoder must be ready before searching.
+  // The embedding model is checked implicitly by calling embed() — if it
+  // fails, the error propagates. The cross-encoder is checked explicitly.
+  if (!isRerankerReady()) {
+    throw new SearchModelNotReadyError(
+      'Cross-encoder model is not ready. Search is unavailable until the model finishes loading.',
+    )
+  }
+
   const embedding = await embed(trimmed)
 
-  // Retrieve a larger candidate pool so the reranker has room to reorder.
-  const effectiveTopK = Math.max(RERANK_CANDIDATE_POOL, maxResults ?? DEFAULT_MAX_RESULTS)
+  // Retrieve the candidate pool sized for cross-encoder reranking.
+  const effectiveTopK = Math.max(
+    RERANK_CANDIDATES_CROSS_ENCODER,
+    maxResults ?? DEFAULT_MAX_RESULTS,
+  )
 
   const hybridResults = await searchHybrid(
     libraryId,
@@ -68,37 +90,15 @@ export async function search(
 
   if (candidates.length === 0) return []
 
-  // Step 3: Lexical/metadata reranker (always active, fast)
-  const lexicallyReranked = rerank(trimmed, candidates)
+  // Cross-encoder reranking (already gated above — this path always runs).
+  const reranked = await rerankWithCrossEncoder(trimmed, candidates)
 
-  // Step 4: Take top candidates for cross-encoder
-  const ceCandidatePool = lexicallyReranked.slice(0, RERANK_CANDIDATES_CROSS_ENCODER)
-
-  // Step 5: Cross-encoder reranker (with graceful degradation)
-  let finalResults: SearchResult[]
-  if (isRerankerReady()) {
-    // Cross-encoder is loaded: use it for reranking
-    finalResults = await rerankWithCrossEncoder(trimmed, ceCandidatePool)
-  } else {
-    // Cross-encoder not loaded: try to load it (non-blocking for this search)
-    // We don't await the load because it would block the search. Instead, we
-    // return results with lexical reranking only. The next search will use the
-    // cross-encoder if the load succeeds.
-    // Note: no progress callback here because services can't import from store/.
-    // The UI can check isRerankerReady() and isRerankerDegraded() for status.
-    loadRerankerModel().catch(() => {
-      // Silently ignore load failures; degradation is handled by isRerankerReady()
-    })
-    finalResults = ceCandidatePool
-  }
-
-  // Step 6: Truncate to maxResults
+  // Truncate to maxResults
   const limit = maxResults ?? DEFAULT_MAX_RESULTS
-  const truncated = finalResults.slice(0, limit)
+  const truncated = reranked.slice(0, limit)
 
-  // Step 7: Abstention (only if cross-encoder is loaded)
-  if (isRerankerReady() && truncated.length > 0) {
-    // The cross-encoder sets rerankScore to the logit. Filter by threshold.
+  // Abstention: filter by cross-encoder logit threshold.
+  if (truncated.length > 0) {
     const hasQualifying = truncated.some(
       (r) => (r.rerankScore ?? -Infinity) >= RERANKER_ABSTENTION_THRESHOLD,
     )
