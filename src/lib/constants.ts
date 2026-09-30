@@ -137,9 +137,10 @@ export const EMBEDDING_MODEL_DOWNLOAD_SIZE = '~90 MB'
 export const EMBEDDING_DIMENSIONS = 384
 
 /**
- * Cross-encoder reranker model (MS-MARCO MiniLM L-6 v2, quantized int8).
- * Used to rerank the top-N hybrid candidates after initial retrieval.
- * Runs in a dedicated Web Worker; degrades gracefully if unavailable.
+ * Cross-encoder model (MS-MARCO MiniLM L-6 v2, quantized int8).
+ * Used to rank the top-N hybrid candidates after initial retrieval.
+ * Runs in a dedicated Web Worker. Mandatory for search — if the model
+ * fails to load, the UI shows an error and allows retry.
  */
 export const RERANKER_MODEL_NAME = 'Xenova/ms-marco-MiniLM-L-6-v2'
 /** User-facing model name and approximate download size (shown in the loading toast). */
@@ -153,7 +154,7 @@ export const RERANKER_MODEL_DOWNLOAD_SIZE = '~23 MB'
  */
 export const RERANK_CANDIDATES_CROSS_ENCODER = 40
 /**
- * Abstention threshold for the cross-encoder reranker (logit scale).
+ * Abstention threshold for the cross-encoder (logit scale).
  *
  * The cross-encoder returns raw logits (not sigmoid probabilities). These are
  * absolute scores, unlike Orama's hybrid scores which are relative (min-max
@@ -202,9 +203,16 @@ export const RERANK_CANDIDATES_CROSS_ENCODER = 40
  * execute — the UI shows an error and a retry button. There is no fallback
  * to lexical-only retrieval: returning results without the cross-encoder
  * would silently surface irrelevant chunks. The cross-encoder is the only
- * validated abstention mechanism in production. The lexical reranker
- * (`src/services/search/rerank.service.ts`) is used as a pre-filter before
- * cross-encoder reranking, but does not replace it for abstention.
+ * validated abstention mechanism in production. The lexical ranker
+ * (`src/lib/lexical-ranking.ts`) is used as a pre-filter before
+ * cross-encoder ranking, but does not replace it for abstention.
+ *
+ * LOAD FAILURE POLICY:
+ *
+ * If the cross-encoder model fails to load, the search pipeline does NOT
+ * execute — the UI shows an error and a retry button. There is no fallback
+ * to lexical-only retrieval: returning results without the cross-encoder
+ * would silently surface irrelevant chunks.
  */
 export const RERANKER_ABSTENTION_THRESHOLD = -6.0
 

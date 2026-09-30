@@ -113,7 +113,7 @@ export function SearchPage() {
   // -- Search models: embedding + cross-encoder loaded in parallel --
   const {
     embeddingStatus,
-    rerankerStatus,
+    crossEncoderStatus,
     combinedStatus,
     retry: retrySearchModels,
   } = useSearchModels({
@@ -308,7 +308,7 @@ export function SearchPage() {
           isSearching={isSearching}
           searchModelsStatus={combinedStatus}
           embeddingStatusDetailed={embeddingStatus}
-          rerankerStatusDetailed={rerankerStatus}
+          crossEncoderStatusDetailed={crossEncoderStatus}
           initialQuery={urlQuery}
           maxResults={prefs.maxResults}
           onMaxResultsChange={handleSetMaxResults}

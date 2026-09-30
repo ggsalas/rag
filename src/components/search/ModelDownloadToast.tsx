@@ -8,7 +8,7 @@ import {
   RERANKER_MODEL_DOWNLOAD_SIZE,
 } from '@/lib/constants'
 
-type ModelKind = 'llm' | 'embedding' | 'reranker'
+type ModelKind = 'llm' | 'embedding' | 'cross-encoder'
 
 interface ModelConfig {
   busyLabel: string
@@ -36,13 +36,13 @@ const CONFIG: Record<ModelKind, ModelConfig> = {
     selectProgress: (s) => s.embeddingProgress,
     selectStatus: (s) => s.embeddingStatus,
   },
-  reranker: {
-    busyLabel: 'Downloading reranker model…',
-    doneLabel: 'Reranker model ready',
+  'cross-encoder': {
+    busyLabel: 'Downloading cross-encoder model…',
+    doneLabel: 'Cross-encoder model ready',
     name: RERANKER_MODEL_DISPLAY_NAME,
     size: RERANKER_MODEL_DOWNLOAD_SIZE,
-    selectProgress: (s) => s.rerankerProgress,
-    selectStatus: (s) => s.rerankerStatus,
+    selectProgress: (s) => s.crossEncoderProgress,
+    selectStatus: (s) => s.crossEncoderStatus,
   },
 }
 

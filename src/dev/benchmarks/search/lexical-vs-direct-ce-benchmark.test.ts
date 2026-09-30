@@ -38,7 +38,7 @@ import { ndcgAtK, hitAtKGraded } from './search-benchmark.ndcg'
 import { chunkMarkdown } from '@/services/ingest/chunking.service'
 import { ENGLISH_STOP_WORDS_ARRAY } from '@/lib/stop-words'
 import { EMBEDDING_DIMENSIONS, RERANKER_ABSTENTION_THRESHOLD } from '@/lib/constants'
-import { rerank } from '@/services/search/rerank.service'
+import { rankByLexicalRelevance } from '@/lib/lexical-ranking'
 import type { SearchResult } from '@/types/search'
 
 const FIXTURE_PATH = resolve(__dirname, '../../fixtures', 'britnet-corpus.json')
@@ -256,7 +256,7 @@ function pipelineA(
   if (candidates.length === 0) return []
 
   // Lexical rerank
-  const reranked = rerank(query, candidates)
+  const reranked = rankByLexicalRelevance(query, candidates)
 
   // Take top-RERANK_K for cross-encoder
   const ceCandidates = reranked.slice(0, RERANK_K)

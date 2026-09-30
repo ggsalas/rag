@@ -1,10 +1,10 @@
 import { describe, it, expect } from 'vitest'
 import {
-  rerank,
-  computeRerankScore,
+  rankByLexicalRelevance,
+  computeLexicalRelevanceScore,
   computeLexicalCoverage,
   RERANK_CANDIDATE_POOL,
-} from './rerank.service'
+} from './lexical-ranking'
 import type { SearchResult } from '@/types/search'
 
 /** Helper to build a minimal SearchResult for testing */
@@ -21,10 +21,10 @@ function makeResult(overrides: Partial<SearchResult> & { chunkId: string; score:
   }
 }
 
-describe('rerank.service', () => {
+describe('lexical-ranking', () => {
   describe('RERANK_CANDIDATE_POOL', () => {
     // EXPERIMENT: bumped from 20 → 100 to widen the internal candidate pool
-    // for benchmark evaluation. See rerank.service.ts for context.
+    // for benchmark evaluation. See lexical-ranking.ts for context.
     it('should be 100', () => {
       expect(RERANK_CANDIDATE_POOL).toBe(100)
     })
@@ -44,8 +44,8 @@ describe('rerank.service', () => {
         searchText: 'climate varies change over time with impact varying',
       })
 
-      const scoreWith = computeRerankScore(query, withPhrase)
-      const scoreWithout = computeRerankScore(query, withoutPhrase)
+      const scoreWith = computeLexicalRelevanceScore(query, withPhrase)
+      const scoreWithout = computeLexicalRelevanceScore(query, withoutPhrase)
 
       // Both have full token coverage, but only c-1 has the exact phrase
       expect(scoreWith).toBeGreaterThan(scoreWithout)
@@ -59,7 +59,7 @@ describe('rerank.service', () => {
         searchText: 'networks of neural origin',
       })
 
-      const score = computeRerankScore(query, candidate)
+      const score = computeLexicalRelevanceScore(query, candidate)
       // Has both tokens but not as contiguous phrase → no phrase bonus
       // coverage = 2/2 = 1.0, phrase = 0, heading = 0
       // rerankScore = 0.8 * (1 + 0.15 * 1.0) = 0.8 * 1.15 = 0.92
@@ -81,8 +81,8 @@ describe('rerank.service', () => {
         searchText: 'alpha beta something else',
       })
 
-      const scoreFull = computeRerankScore(query, fullCoverage)
-      const scorePartial = computeRerankScore(query, partialCoverage)
+      const scoreFull = computeLexicalRelevanceScore(query, fullCoverage)
+      const scorePartial = computeLexicalRelevanceScore(query, partialCoverage)
 
       expect(scoreFull).toBeGreaterThan(scorePartial)
     })
@@ -96,7 +96,7 @@ describe('rerank.service', () => {
         searchText: 'alpha beta content',
       })
 
-      const score = computeRerankScore(query, candidate)
+      const score = computeLexicalRelevanceScore(query, candidate)
       // coverage = 2/2 = 1.0 (both non-stop tokens found)
       // phrase = 0 ("the alpha is beta" not contiguous)
       // heading = 0
@@ -111,7 +111,7 @@ describe('rerank.service', () => {
         searchText: 'completely unrelated content here',
       })
 
-      const score = computeRerankScore(query, candidate)
+      const score = computeLexicalRelevanceScore(query, candidate)
       expect(score).toBeCloseTo(0.7, 5)
     })
 
@@ -123,7 +123,7 @@ describe('rerank.service', () => {
         searchText: 'some text content',
       })
 
-      const score = computeRerankScore(query, candidate)
+      const score = computeLexicalRelevanceScore(query, candidate)
       // No non-stop tokens → coverage = 0, phrase = 0, heading = 0
       expect(score).toBeCloseTo(0.7, 5)
     })
@@ -145,8 +145,8 @@ describe('rerank.service', () => {
         headingText: '',
       })
 
-      const scoreWith = computeRerankScore(query, withHeading)
-      const scoreWithout = computeRerankScore(query, withoutHeading)
+      const scoreWith = computeLexicalRelevanceScore(query, withHeading)
+      const scoreWithout = computeLexicalRelevanceScore(query, withoutHeading)
 
       expect(scoreWith).toBeGreaterThan(scoreWithout)
     })
@@ -166,8 +166,8 @@ describe('rerank.service', () => {
         sectionPath: [],
       })
 
-      const scoreWith = computeRerankScore(query, withSection)
-      const scoreWithout = computeRerankScore(query, withoutSection)
+      const scoreWith = computeLexicalRelevanceScore(query, withSection)
+      const scoreWithout = computeLexicalRelevanceScore(query, withoutSection)
 
       expect(scoreWith).toBeGreaterThan(scoreWithout)
     })
@@ -181,7 +181,7 @@ describe('rerank.service', () => {
         headingText: 'dna replication process',
       })
 
-      const score = computeRerankScore(query, candidate)
+      const score = computeLexicalRelevanceScore(query, candidate)
       // headingHit = 1 (both tokens found in heading)
       // coverage = 0 (tokens not in searchText)
       // phrase = 0
@@ -198,8 +198,8 @@ describe('rerank.service', () => {
         makeResult({ chunkId: 'c-c', score: 0.7, searchText: 'test content' }),
       ]
 
-      const result1 = rerank(query, candidates)
-      const result2 = rerank(query, candidates)
+      const result1 = rankByLexicalRelevance(query, candidates)
+      const result2 = rankByLexicalRelevance(query, candidates)
 
       // Same input → same output
       expect(result1.map((r) => r.chunkId)).toEqual(result2.map((r) => r.chunkId))
@@ -216,7 +216,7 @@ describe('rerank.service', () => {
         makeResult({ chunkId: 'c-3', score: 0.71, searchText: 'alpha beta content' }),
       ]
 
-      const results = rerank(query, candidates)
+      const results = rankByLexicalRelevance(query, candidates)
 
       // c-3: 0.71 * (1 + 0.15 + 0.20) = 0.9585 (full coverage + phrase)
       // c-1: 0.70 * (1 + 0.15 + 0.20) = 0.9450 (full coverage + phrase)
@@ -234,12 +234,12 @@ describe('rerank.service', () => {
         makeResult({ chunkId: `c-${i}`, score: 0.5 + i * 0.01, searchText: 'test content' }),
       )
 
-      const results = rerank(query, candidates)
+      const results = rankByLexicalRelevance(query, candidates)
       expect(results).toHaveLength(25)
     })
 
     it('should return empty array for empty candidates', () => {
-      expect(rerank('query', [])).toEqual([])
+      expect(rankByLexicalRelevance('query', [])).toEqual([])
     })
   })
 
@@ -250,7 +250,7 @@ describe('rerank.service', () => {
         makeResult({ chunkId: 'c-1', score: 0.42, searchText: 'alpha content' }),
       ]
 
-      const results = rerank(query, candidates)
+      const results = rankByLexicalRelevance(query, candidates)
       expect(results[0]!.score).toBe(0.42) // original preserved
       expect(results[0]!.rerankScore).toBeGreaterThan(0.42) // boosted
     })
@@ -265,7 +265,7 @@ describe('rerank.service', () => {
         headingText: 'Alpha Beta Section',
       })
 
-      const score = computeRerankScore(query, candidate)
+      const score = computeLexicalRelevanceScore(query, candidate)
       // Max boost: 0.5 * (1 + 0.15 + 0.20 + 0.10) = 0.5 * 1.45 = 0.725
       expect(score).toBeCloseTo(0.725, 5)
       // Original score (0.5) is still the dominant factor
@@ -319,7 +319,7 @@ describe('rerank.service', () => {
       expect(coverage).toBeCloseTo(2 / 3, 5)
 
       // The rerank score should use the same coverage value
-      const rerankScore = computeRerankScore(query, candidate)
+      const rerankScore = computeLexicalRelevanceScore(query, candidate)
       // coverage = 2/3, phrase = 0, heading = 0
       const expected = 0.8 * (1 + 0.15 * (2 / 3))
       expect(rerankScore).toBeCloseTo(expected, 5)

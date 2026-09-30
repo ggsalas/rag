@@ -9,14 +9,14 @@ app, except `src/dev-tools.ts`, which is only loaded with
 
 ### `benchmarks/search/`
 
-Search benchmarks: hybrid (vector + text), cross-encoder (reranker),
+Search benchmarks: hybrid (vector + text), cross-encoder,
 nDCG / Hit / Recall metrics over ground truth, and targeted diagnostics. The
 heavy benchmarks are hidden behind environment variables (see Commands).
 
 Key files:
 
 - `hybrid-benchmark.test.ts` — hybrid search over the Britney corpus.
-- `cross-encoder-benchmark.test.ts` — cross-encoder reranker.
+- `cross-encoder-benchmark.test.ts` — cross-encoder.
 - `qasper-benchmark.test.ts` — multi-document retrieval over QASPER.
 - `first-album-diagnostic.test.ts`, `reranker-diagnostic.test.ts` —
   one-off diagnostics.

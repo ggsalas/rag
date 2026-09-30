@@ -13,7 +13,7 @@ interface SearchBarProps {
   searchModelsStatus: SearchModelsStatus
   /** Per-model statuses for granular progress messages. */
   embeddingStatusDetailed: ModelStatus
-  rerankerStatusDetailed: ModelStatus
+  crossEncoderStatusDetailed: ModelStatus
   initialQuery?: string
   maxResults?: number
   onMaxResultsChange?: (n: number) => void
@@ -29,7 +29,7 @@ export function SearchBar({
   onSearch,
   searchModelsStatus,
   embeddingStatusDetailed,
-  rerankerStatusDetailed,
+  crossEncoderStatusDetailed,
   initialQuery = '',
   maxResults,
   onMaxResultsChange,
@@ -197,8 +197,8 @@ export function SearchBar({
           {embeddingStatusDetailed === 'loading' && (
             <p>Loading embedding model… Search will be available once all models are ready.</p>
           )}
-          {rerankerStatusDetailed === 'loading' && (
-            <p>Loading cross-encoder reranker model…</p>
+          {crossEncoderStatusDetailed === 'loading' && (
+            <p>Loading cross-encoder model…</p>
           )}
         </div>
       )}
@@ -210,8 +210,8 @@ export function SearchBar({
           {embeddingStatusDetailed === 'error' && (
             <p className="text-xs text-foreground">• Embedding model failed.</p>
           )}
-          {rerankerStatusDetailed === 'error' && (
-            <p className="text-xs text-foreground">• Cross-encoder reranker model failed.</p>
+          {crossEncoderStatusDetailed === 'error' && (
+            <p className="text-xs text-foreground">• Cross-encoder model failed.</p>
           )}
           {onRetryModels && (
             <button

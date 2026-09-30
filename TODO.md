@@ -9,7 +9,7 @@ La búsqueda actual ya fue validada con el corpus de Britney y dos papers QASPER
 - [x] Navegación exacta al chunk desde los resultados.
 - [x] Embeddings sin truncación silenciosa en los chunks producidos.
 - [x] Recuperación híbrida con pesos fijos `text: 0.25`, `vector: 0.75`.
-- [x] Cross-encoder bajo demanda con degradación elegante.
+- [x] Cross-encoder obligatorio para buscar, con carga paralela y reintento ante errores.
 - [x] Abstención conservadora con umbral de logit `-6.0`.
 - [x] Ground truth reproducible y benchmarks offline bajo `src/dev/`.
 - [x] Validación con Britney y QASPER.

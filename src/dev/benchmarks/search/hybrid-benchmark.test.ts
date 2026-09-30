@@ -49,7 +49,7 @@ import {
   MIN_ABSOLUTE_SCORE,
   MIN_QUERY_LEXICAL_COVERAGE,
 } from '@/lib/constants'
-import { rerank, computeLexicalCoverage } from '@/services/search/rerank.service'
+import { rankByLexicalRelevance, computeLexicalCoverage } from '@/lib/lexical-ranking'
 import type { SearchResult } from '@/types/search'
 
 const FIXTURE_PATH = resolve(__dirname, '../../fixtures', 'britnet-corpus.json')
@@ -479,7 +479,7 @@ function applyProductionPipeline(
   if (candidates.length === 0) return []
 
   // Step 3: rerank
-  const reranked = rerank(query, candidates)
+  const reranked = rankByLexicalRelevance(query, candidates)
 
   // Step 4: relative + absolute threshold
   const topScore = Math.max(...reranked.map((r) => r.score))

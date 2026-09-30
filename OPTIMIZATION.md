@@ -102,17 +102,19 @@ El pipeline de punta a punta, con los valores reales del código:
 1. Embed de la query.
 2. `searchHybrid` en Orama con `RERANK_CANDIDATE_POOL = 100` candidatos.
 3. Filtro de chunks vacíos (`text` o `searchText` en blanco).
-4. Reranker léxico (`rerank.service.ts`): fórmula
+4. Reranker léxico (`src/lib/lexical-ranking.ts`): fórmula
    `rerankScore = originalScore * (1 + 0.15·coverage + 0.20·phraseHit + 0.10·headingHit)`,
    boost máximo 0.45; el score Orama sigue siendo la señal dominante.
 5. Trunca a `RERANK_CANDIDATES_CROSS_ENCODER = 40` candidatos.
-6. Reranker cross-encoder (`cross-encoder-reranker.service.ts`): modelo
+6. Reranker cross-encoder (`cross-encoder.service.ts`): modelo
    `Xenova/ms-marco-MiniLM-L-6-v2` cuantizado q8 (~23 MB), corriendo en un
    Web Worker dedicado (`src/workers/reranker.worker.ts`) vía Comlink. Carga
-   bajo demanda: si falla, el pipeline degrada al reranker léxico sin romper.
+   bajo demanda y obligatoria para buscar: si el modelo falla al cargar o al
+   puntuar, la búsqueda queda bloqueada (`CrossEncoderNotReadyError`) y la
+   UI permite reintentar la carga.
 7. Trunca a `DEFAULT_MAX_RESULTS = 10`.
-8. **Abstención**: si el cross-encoder está cargado, se aplica
-   `RERANKER_ABSTENTION_THRESHOLD = -6.0` sobre los logits. Los logits son
+8. **Abstención**: se aplica `RERANKER_ABSTENTION_THRESHOLD = -6.0` sobre
+   los logits del cross-encoder. Los logits son
    absolutos (no normalizados). El umbral se calibró originalmente en el corpus
    de Britney (separación perfecta: mínimo positivo 1.12, máximo negativo −7.29),
     pero la validación multi-documento con QASPER reveló solapamiento (ver §6).
@@ -621,12 +623,8 @@ Archivos relevantes:
   del ground truth ni del pipeline. El diagnóstico completo está en
   `first-album-diagnostic.test.ts`.
 
-- **Sin cross-encoder cargado no hay abstención**. Durante la descarga inicial
-  de ~23 MB, una consulta sin relación con el corpus devuelve resultados
-  (degradación elegante a reranker léxico, sin threshold de abstención). Es
-  un trade-off deliberado: preferimos devolver resultados potencialmente
-  irrelevantes durante unos segundos a no devolver nada, porque el lexical
-  gate (`MIN_QUERY_LEXICAL_COVERAGE`) no es fiable (D7).
+- **Sin cross-encoder cargado, la búsqueda queda bloqueada**. La UI muestra el
+  error y permite reintentar la carga.
 
 - **Los documentos `.docx` se indexan sin contexto de sección.** En
   `src/services/ingest/ingest.service.ts`, `isStructuredMarkdown` sólo es cierto
@@ -721,8 +719,8 @@ porque lo que se indexa es `searchText`, que ya venía sin sintaxis Markdown.
 | `src/lib/constants.ts`                                        | Constantes globales del pipeline                          |
 | `src/services/ingest/chunking.service.ts`                     | Chunking Markdown con AST, overlap y descarte de basura   |
 | `src/services/search/search.service.ts`                       | Pipeline de búsqueda de producción                        |
-| `src/services/search/rerank.service.ts`                       | Reranker léxico y `RERANK_CANDIDATE_POOL = 100`           |
-| `src/services/search/cross-encoder-reranker.service.ts`       | Servicio del cross-encoder con degradación elegante       |
+| `src/lib/lexical-ranking.ts`                                  | Reranker léxico y `RERANK_CANDIDATE_POOL = 100`           |
+| `src/services/search/cross-encoder.service.ts`                | Servicio del cross-encoder (obligatorio para buscar)      |
 | `src/services/embedding/vector-store.ts`                      | Índice Orama por biblioteca, búsqueda híbrida             |
 | `src/services/embedding/embedding.service.ts`                 | Carga del modelo de embeddings                            |
 | `src/workers/reranker.worker.ts`                              | Worker del cross-encoder vía Comlink                      |

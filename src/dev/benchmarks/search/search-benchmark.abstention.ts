@@ -1,7 +1,7 @@
 import type { BenchmarkCase, BenchmarkMetrics } from './search-benchmark.types'
 import type { BenchmarkCaseResult, BenchmarkConfigReport } from './search-benchmark.runner'
 import { evaluateAll } from './search-benchmark.evaluation'
-import { computeLexicalCoverage } from '@/services/search/rerank.service'
+import { computeLexicalCoverage } from '@/lib/lexical-ranking'
 
 /**
  * Lexical abstention experiment: post-hoc filtering of benchmark results based

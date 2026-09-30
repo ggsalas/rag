@@ -64,8 +64,9 @@ function tokenize(text: string): string[] {
  * - 1 means every meaningful query token appears at least once.
  * - Returns 0 when the query contains only stop words (no meaningful tokens).
  *
- * Uses the same stop-word list and tokenisation as the reranker so the value
- * is consistent with the coverage term inside `computeRerankScore`.
+ * Uses the same stop-word list and tokenisation as the ranking function so the
+ * value is consistent with the coverage term inside
+ * `computeLexicalRelevanceScore`.
  */
 export function computeLexicalCoverage(query: string, searchText: string): number {
   const queryTokens = tokenize(query)
@@ -76,10 +77,10 @@ export function computeLexicalCoverage(query: string, searchText: string): numbe
 }
 
 /**
- * Computes the rerank score for a single candidate.
+ * Computes the lexical relevance score for a single candidate.
  * Exported for unit testing the formula in isolation.
  */
-export function computeRerankScore(
+export function computeLexicalRelevanceScore(
   query: string,
   candidate: Pick<SearchResult, 'searchText' | 'headingText' | 'sectionPath' | 'score'>,
 ): number {
@@ -110,19 +111,19 @@ export function computeRerankScore(
 }
 
 /**
- * Reranks a list of search results using a conservative lexical/metadata
- * signal on top of the original Orama hybrid score.
+ * Ranks a list of search results by lexical relevance, using a conservative
+ * lexical/metadata signal on top of the original Orama hybrid score.
  *
  * The original `score` field is preserved on each result (it remains the
  * Orama confidence for display/threshold semantics). An optional
  * `rerankScore` field is added so callers can inspect the boosted value.
  */
-export function rerank(query: string, candidates: SearchResult[]): SearchResult[] {
+export function rankByLexicalRelevance(query: string, candidates: SearchResult[]): SearchResult[] {
   if (candidates.length === 0) return []
 
   const scored = candidates.map((c) => ({
     result: c,
-    rerankScore: computeRerankScore(query, c),
+    rerankScore: computeLexicalRelevanceScore(query, c),
   }))
 
   // Sort by rerankScore descending. Break ties deterministically by chunkId

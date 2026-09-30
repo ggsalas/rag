@@ -2,9 +2,9 @@ import { useEffect, useRef, useCallback } from 'react'
 import { useAppStore } from '@/store/app.store'
 import { initEmbeddingModel } from '@/services/embedding/embedding.service'
 import {
-  loadRerankerModel,
-  resetRerankerLoadState,
-} from '@/services/search/cross-encoder-reranker.service'
+  loadCrossEncoderModel,
+  resetCrossEncoderLoadState,
+} from '@/services/search/cross-encoder.service'
 import type { RerankerLoadProgressCallback } from '@/workers/reranker.worker'
 
 /**
@@ -34,19 +34,19 @@ export interface SearchModelsCallbacks {
  */
 export function combineSearchModelsStatus(
   embeddingStatus: 'idle' | 'loading' | 'ready' | 'error',
-  rerankerStatus: 'idle' | 'loading' | 'ready' | 'error',
+  crossEncoderStatus: 'idle' | 'loading' | 'ready' | 'error',
 ): SearchModelsStatus {
-  if (embeddingStatus === 'ready' && rerankerStatus === 'ready') return 'ready'
-  if (embeddingStatus === 'error' || rerankerStatus === 'error') return 'error'
-  if (embeddingStatus === 'loading' || rerankerStatus === 'loading') return 'loading'
+  if (embeddingStatus === 'ready' && crossEncoderStatus === 'ready') return 'ready'
+  if (embeddingStatus === 'error' || crossEncoderStatus === 'error') return 'error'
+  if (embeddingStatus === 'loading' || crossEncoderStatus === 'loading') return 'loading'
   // Both idle, or one idle + other not yet loading
-  if (embeddingStatus === 'idle' && rerankerStatus === 'idle') return 'idle'
+  if (embeddingStatus === 'idle' && crossEncoderStatus === 'idle') return 'idle'
   // Mixed idle/loading → still loading
   return 'loading'
 }
 
 /**
- * Initializes both the embedding model and the cross-encoder reranker in
+ * Initializes both the embedding model and the cross-encoder in
  * parallel, tracking their progress in the global Zustand store.
  *
  * Search is considered enabled only when BOTH models are `ready`. While either
@@ -61,9 +61,9 @@ export function useSearchModels(callbacks: SearchModelsCallbacks) {
   const embeddingStatus = useAppStore((s) => s.embeddingStatus)
   const setEmbeddingStatus = useAppStore((s) => s.setEmbeddingStatus)
   const setEmbeddingProgress = useAppStore((s) => s.setEmbeddingProgress)
-  const rerankerStatus = useAppStore((s) => s.rerankerStatus)
-  const setRerankerStatus = useAppStore((s) => s.setRerankerStatus)
-  const setRerankerProgress = useAppStore((s) => s.setRerankerProgress)
+  const crossEncoderStatus = useAppStore((s) => s.crossEncoderStatus)
+  const setCrossEncoderStatus = useAppStore((s) => s.setCrossEncoderStatus)
+  const setCrossEncoderProgress = useAppStore((s) => s.setCrossEncoderProgress)
 
   // Stable ref for callbacks so the effect doesn't re-run on every render.
   const callbacksRef = useRef(callbacks)
@@ -77,15 +77,15 @@ export function useSearchModels(callbacks: SearchModelsCallbacks) {
     // Only start if both are idle (fresh mount). If either is already
     // loading/ready/error, leave it alone — a previous invocation or a retry
     // is in charge.
-    if (embeddingStatus !== 'idle' || rerankerStatus !== 'idle') return
+    if (embeddingStatus !== 'idle' || crossEncoderStatus !== 'idle') return
     startedRef.current = true
 
     const { onLoadStart, onLoadEnd, onLoadError } = callbacksRef.current
     onLoadStart()
     setEmbeddingStatus('loading')
     setEmbeddingProgress(0)
-    setRerankerStatus('loading')
-    setRerankerProgress(0)
+    setCrossEncoderStatus('loading')
+    setCrossEncoderProgress(0)
 
     const embeddingPromise = initEmbeddingModel((progress) =>
       setEmbeddingProgress(Math.round(progress * 100)),
@@ -101,62 +101,62 @@ export function useSearchModels(callbacks: SearchModelsCallbacks) {
         )
       })
 
-    const rerankerProgressCallback: RerankerLoadProgressCallback = (progress) =>
-      setRerankerProgress(Math.round(progress * 100))
+    const crossEncoderProgressCallback: RerankerLoadProgressCallback = (progress) =>
+      setCrossEncoderProgress(Math.round(progress * 100))
 
-    const rerankerPromise = loadRerankerModel(rerankerProgressCallback)
+    const crossEncoderPromise = loadCrossEncoderModel(crossEncoderProgressCallback)
       .then((ok) => {
         if (ok) {
-          setRerankerStatus('ready')
+          setCrossEncoderStatus('ready')
         } else {
-          setRerankerStatus('error')
-          onLoadError('Failed to load cross-encoder reranker model')
+          setCrossEncoderStatus('error')
+          onLoadError('Failed to load cross-encoder model')
         }
       })
       .catch((error) => {
-        console.error('[useSearchModels] Failed to load reranker model:', error)
-        setRerankerStatus('error')
+        console.error('[useSearchModels] Failed to load cross-encoder model:', error)
+        setCrossEncoderStatus('error')
         onLoadError(
-          error instanceof Error ? error.message : 'Failed to load reranker model',
+          error instanceof Error ? error.message : 'Failed to load cross-encoder model',
         )
       })
 
-    Promise.allSettled([embeddingPromise, rerankerPromise]).then((results) => {
+    Promise.allSettled([embeddingPromise, crossEncoderPromise]).then((results) => {
       const allOk = results.every((r) => r.status === 'fulfilled')
       // Only notify completion if neither callback already fired an error.
       const currentEmbedding = useAppStore.getState().embeddingStatus
-      const currentReranker = useAppStore.getState().rerankerStatus
-      if (allOk && currentEmbedding !== 'error' && currentReranker !== 'error') {
+      const currentCrossEncoder = useAppStore.getState().crossEncoderStatus
+      if (allOk && currentEmbedding !== 'error' && currentCrossEncoder !== 'error') {
         onLoadEnd()
       }
     })
   }, [
     embeddingStatus,
-    rerankerStatus,
+    crossEncoderStatus,
     setEmbeddingStatus,
     setEmbeddingProgress,
-    setRerankerStatus,
-    setRerankerProgress,
+    setCrossEncoderStatus,
+    setCrossEncoderProgress,
   ])
 
-  const combinedStatus = combineSearchModelsStatus(embeddingStatus, rerankerStatus)
+  const combinedStatus = combineSearchModelsStatus(embeddingStatus, crossEncoderStatus)
 
   /** Retries loading both models from scratch (resets error state). */
   const retry = useCallback(() => {
-    // Reset the reranker's internal load-failed flag so loadRerankerModel
+    // Reset the cross-encoder's internal load-failed flag so loadCrossEncoderModel
     // attempts a fresh load instead of returning false immediately.
-    resetRerankerLoadState()
+    resetCrossEncoderLoadState()
     // Reset Zustand slices so the effect re-triggers.
     setEmbeddingStatus('idle')
     setEmbeddingProgress(0)
-    setRerankerStatus('idle')
-    setRerankerProgress(0)
+    setCrossEncoderStatus('idle')
+    setCrossEncoderProgress(0)
     startedRef.current = false
-  }, [setEmbeddingStatus, setEmbeddingProgress, setRerankerStatus, setRerankerProgress])
+  }, [setEmbeddingStatus, setEmbeddingProgress, setCrossEncoderStatus, setCrossEncoderProgress])
 
   return {
     embeddingStatus,
-    rerankerStatus,
+    crossEncoderStatus,
     combinedStatus,
     retry,
   }

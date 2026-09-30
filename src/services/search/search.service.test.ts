@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { search, SearchModelNotReadyError } from './search.service'
 import { RERANK_CANDIDATES_CROSS_ENCODER } from '@/lib/constants'
-import { RERANK_CANDIDATE_POOL } from './rerank.service'
+import { RERANK_CANDIDATE_POOL } from '@/lib/lexical-ranking'
 
 // Mock the embedding service
 vi.mock('@/services/embedding/embedding.service', () => ({
@@ -14,40 +14,39 @@ vi.mock('@/services/embedding/vector-store', () => ({
   searchHybrid: vi.fn(),
 }))
 
-// Mock the cross-encoder reranker service
-vi.mock('./cross-encoder-reranker.service', () => ({
-  rerankWithCrossEncoder: vi.fn((_query, candidates) => Promise.resolve(candidates)),
-  isRerankerReady: vi.fn(() => true),
-  loadRerankerModel: vi.fn(() => Promise.resolve(true)),
-  isRerankerDegraded: vi.fn(() => false),
-  resetRerankerLoadState: vi.fn(),
+// Mock the cross-encoder service
+vi.mock('./cross-encoder.service', () => ({
+  rankWithCrossEncoder: vi.fn((_query, candidates) => Promise.resolve(candidates)),
+  isCrossEncoderReady: vi.fn(() => true),
+  loadCrossEncoderModel: vi.fn(() => Promise.resolve(true)),
+  resetCrossEncoderLoadState: vi.fn(),
 }))
 
 // Mock the lexical reranker service
-vi.mock('./rerank.service', () => ({
-  rerank: vi.fn((_query, candidates) => candidates),
+vi.mock('@/lib/lexical-ranking', () => ({
+  rankByLexicalRelevance: vi.fn((_query, candidates) => candidates),
   RERANK_CANDIDATE_POOL: 100,
 }))
 
 import { embed } from '@/services/embedding/embedding.service'
 import { searchHybrid } from '@/services/embedding/vector-store'
 import {
-  rerankWithCrossEncoder,
-  isRerankerReady,
-} from './cross-encoder-reranker.service'
-import { rerank } from './rerank.service'
+  rankWithCrossEncoder,
+  isCrossEncoderReady,
+} from './cross-encoder.service'
+import { rankByLexicalRelevance } from '@/lib/lexical-ranking'
 
 const mockEmbed = vi.mocked(embed)
 const mockSearchHybrid = vi.mocked(searchHybrid)
-const mockRerankWithCrossEncoder = vi.mocked(rerankWithCrossEncoder)
-const mockIsRerankerReady = vi.mocked(isRerankerReady)
-const mockRerank = vi.mocked(rerank)
+const mockRankWithCrossEncoder = vi.mocked(rankWithCrossEncoder)
+const mockIsCrossEncoderReady = vi.mocked(isCrossEncoderReady)
+const mockRerank = vi.mocked(rankByLexicalRelevance)
 
 describe('search.service', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     // Default: cross-encoder ready
-    mockIsRerankerReady.mockReturnValue(true)
+    mockIsCrossEncoderReady.mockReturnValue(true)
   })
 
   describe('empty query handling', () => {
@@ -66,7 +65,7 @@ describe('search.service', () => {
 
   describe('cross-encoder gate', () => {
     it('should throw SearchModelNotReadyError when cross-encoder is not ready', async () => {
-      mockIsRerankerReady.mockReturnValue(false)
+      mockIsCrossEncoderReady.mockReturnValue(false)
       await expect(search('test', 'lib-1')).rejects.toThrow(SearchModelNotReadyError)
       await expect(search('test', 'lib-1')).rejects.toThrow(/Cross-encoder model is not ready/)
       // Embedding should not even be called — gate fires first
@@ -74,7 +73,7 @@ describe('search.service', () => {
     })
 
     it('should not call searchHybrid when cross-encoder is not ready', async () => {
-      mockIsRerankerReady.mockReturnValue(false)
+      mockIsCrossEncoderReady.mockReturnValue(false)
       await expect(search('test', 'lib-1')).rejects.toThrow()
       expect(mockSearchHybrid).not.toHaveBeenCalled()
     })
@@ -97,7 +96,7 @@ describe('search.service', () => {
           chunkIndex: 0,
         },
       ])
-      mockRerankWithCrossEncoder.mockResolvedValue([
+      mockRankWithCrossEncoder.mockResolvedValue([
         {
           chunkId: 'chunk-1',
           documentId: 'doc-1',
@@ -130,7 +129,7 @@ describe('search.service', () => {
       const fakeEmbedding = Array(384).fill(0.1)
       mockEmbed.mockResolvedValue(fakeEmbedding)
       mockSearchHybrid.mockResolvedValue([])
-      mockRerankWithCrossEncoder.mockResolvedValue([])
+      mockRankWithCrossEncoder.mockResolvedValue([])
 
       await search('query', 'lib-1', 10)
 
@@ -148,7 +147,7 @@ describe('search.service', () => {
       const fakeEmbedding = Array(384).fill(0.1)
       mockEmbed.mockResolvedValue(fakeEmbedding)
       mockSearchHybrid.mockResolvedValue([])
-      mockRerankWithCrossEncoder.mockResolvedValue([])
+      mockRankWithCrossEncoder.mockResolvedValue([])
 
       await search('query', 'lib-1', 150)
 
@@ -165,7 +164,7 @@ describe('search.service', () => {
       const fakeEmbedding = Array(384).fill(0.1)
       mockEmbed.mockResolvedValue(fakeEmbedding)
       mockSearchHybrid.mockResolvedValue([])
-      mockRerankWithCrossEncoder.mockResolvedValue([])
+      mockRankWithCrossEncoder.mockResolvedValue([])
 
       await search('  hello world  ', 'lib-1')
 
@@ -183,7 +182,7 @@ describe('search.service', () => {
       const fakeEmbedding = Array(384).fill(0.1)
       mockEmbed.mockResolvedValue(fakeEmbedding)
       mockSearchHybrid.mockResolvedValue([])
-      mockRerankWithCrossEncoder.mockResolvedValue([])
+      mockRankWithCrossEncoder.mockResolvedValue([])
 
       const customWeights = { text: 0.3, vector: 0.7 }
       await search('query', 'lib-1', undefined, customWeights)
@@ -220,7 +219,7 @@ describe('search.service', () => {
       mockRerank.mockReturnValue(lexicallyReordered)
 
       // Cross-encoder receives the top 40 from the lexically reranked list
-      mockRerankWithCrossEncoder.mockImplementation(async (_q, candidates) =>
+      mockRankWithCrossEncoder.mockImplementation(async (_q, candidates) =>
         candidates.map((c) => ({ ...c, rerankScore: 5.0 })),
       )
 
@@ -232,11 +231,11 @@ describe('search.service', () => {
       expect(mockRerank.mock.calls[0]![1]).toHaveLength(50)
 
       // Verify cross-encoder received only top 40 from the lexically reranked list
-      expect(mockRerankWithCrossEncoder).toHaveBeenCalledWith(
+      expect(mockRankWithCrossEncoder).toHaveBeenCalledWith(
         'alpha beta',
         expect.any(Array),
       )
-      const ceInput = mockRerankWithCrossEncoder.mock.calls[0]![1]
+      const ceInput = mockRankWithCrossEncoder.mock.calls[0]![1]
       expect(ceInput).toHaveLength(RERANK_CANDIDATES_CROSS_ENCODER)
       // The first 40 of the reversed list are c-49, c-48, ..., c-10
       expect(ceInput[0]!.chunkId).toBe('c-49')
@@ -265,7 +264,7 @@ describe('search.service', () => {
       mockRerank.mockReturnValue(hybridResults)
 
       // Cross-encoder reorders and assigns logits
-      mockRerankWithCrossEncoder.mockResolvedValue([
+      mockRankWithCrossEncoder.mockResolvedValue([
         {
           ...hybridResults[0]!,
           rerankScore: 5.5,
@@ -275,7 +274,7 @@ describe('search.service', () => {
       const results = await search('alpha beta', 'lib-1')
 
       expect(mockRerank).toHaveBeenCalledWith('alpha beta', expect.any(Array))
-      expect(mockRerankWithCrossEncoder).toHaveBeenCalledWith('alpha beta', expect.any(Array))
+      expect(mockRankWithCrossEncoder).toHaveBeenCalledWith('alpha beta', expect.any(Array))
       expect(results).toHaveLength(1)
       expect(results[0]!.rerankScore).toBe(5.5)
     })
@@ -300,7 +299,7 @@ describe('search.service', () => {
       ])
 
       // Cross-encoder returns low logit (irrelevant)
-      mockRerankWithCrossEncoder.mockResolvedValue([
+      mockRankWithCrossEncoder.mockResolvedValue([
         {
           chunkId: 'c-1',
           documentId: 'd-1',
@@ -347,7 +346,7 @@ describe('search.service', () => {
         },
       ])
 
-      mockRerankWithCrossEncoder.mockResolvedValue([
+      mockRankWithCrossEncoder.mockResolvedValue([
         {
           chunkId: 'c-1',
           documentId: 'd-1',
@@ -397,7 +396,7 @@ describe('search.service', () => {
       ])
 
       // Exactly at threshold → passes
-      mockRerankWithCrossEncoder.mockResolvedValue([
+      mockRankWithCrossEncoder.mockResolvedValue([
         {
           chunkId: 'c-1',
           documentId: 'd-1',
@@ -415,7 +414,7 @@ describe('search.service', () => {
       expect(resultsAt).toHaveLength(1)
 
       // Just below threshold → abstains
-      mockRerankWithCrossEncoder.mockResolvedValue([
+      mockRankWithCrossEncoder.mockResolvedValue([
         {
           chunkId: 'c-1',
           documentId: 'd-1',
@@ -468,7 +467,7 @@ describe('search.service', () => {
       const validCandidates = hybridResults.filter((r) => r.text.trim().length > 0)
       mockRerank.mockReturnValue(validCandidates)
 
-      mockRerankWithCrossEncoder.mockResolvedValue([
+      mockRankWithCrossEncoder.mockResolvedValue([
         {
           chunkId: 'c-valid',
           documentId: 'd-1',
@@ -488,11 +487,11 @@ describe('search.service', () => {
       expect(results).toHaveLength(1)
       expect(results[0]!.chunkId).toBe('c-valid')
       // Cross-encoder should only receive the valid candidate
-      expect(mockRerankWithCrossEncoder).toHaveBeenCalledWith(
+      expect(mockRankWithCrossEncoder).toHaveBeenCalledWith(
         'alpha beta gamma',
         expect.arrayContaining([expect.objectContaining({ chunkId: 'c-valid' })]),
       )
-      expect(mockRerankWithCrossEncoder).toHaveBeenCalledWith(
+      expect(mockRankWithCrossEncoder).toHaveBeenCalledWith(
         'alpha beta gamma',
         expect.not.arrayContaining([expect.objectContaining({ chunkId: 'c-empty' })]),
       )
@@ -529,7 +528,7 @@ describe('search.service', () => {
       const results = await search('alpha beta gamma', 'lib-1')
 
       expect(results).toHaveLength(0)
-      expect(mockRerankWithCrossEncoder).not.toHaveBeenCalled()
+      expect(mockRankWithCrossEncoder).not.toHaveBeenCalled()
     })
   })
 
@@ -573,7 +572,7 @@ describe('search.service', () => {
         },
       ])
 
-      mockRerankWithCrossEncoder.mockResolvedValue([
+      mockRankWithCrossEncoder.mockResolvedValue([
         { chunkId: 'c-1', documentId: 'd-1', documentName: 'doc.txt', text: 'alpha content', searchText: 'alpha content', sectionPath: [], headingText: '', score: 0.9, chunkIndex: 0, rerankScore: 5.0 },
         { chunkId: 'c-2', documentId: 'd-1', documentName: 'doc.txt', text: 'alpha more', searchText: 'alpha more', sectionPath: [], headingText: '', score: 0.88, chunkIndex: 1, rerankScore: 4.0 },
         { chunkId: 'c-3', documentId: 'd-1', documentName: 'doc.txt', text: 'alpha extra', searchText: 'alpha extra', sectionPath: [], headingText: '', score: 0.85, chunkIndex: 2, rerankScore: 3.0 },

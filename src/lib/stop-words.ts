@@ -2,7 +2,7 @@
  * English stop words used across the search pipeline.
  *
  * Single source of truth — consumed by:
- *   - `services/search/rerank.service.ts` (lexical reranker, pre-filters candidates)
+ *   - `src/lib/lexical-ranking.ts` (lexical ranker, pre-filters candidates)
  *   - `services/embedding/vector-store.ts` (Orama tokenizer configuration)
  *
  * The list is intentionally small and deterministic: no stemming, no locale
