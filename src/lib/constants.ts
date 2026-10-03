@@ -13,11 +13,15 @@ export const CHUNK_SIZE = 900
 /**
  * Characters of overlap between consecutive chunks.
  *
- * 150 chars ≈ 37 tokens — enough to carry sentence-level context across chunk
- * boundaries without wasting embedding budget on duplicated content.
- * Overlap is measured in characters and split at sentence boundaries.
+ * 200 chars ≈ 50 tokens — carries sentence-level context across chunk
+ * boundaries and increases the probability that key fragments appear in
+ * multiple chunks, improving Hit@10 when normalization shifts chunk boundaries.
+ * Still safely under MiniLM's 256-token limit (900 chars + 200 overlap ≈ 275
+ * tokens worst case, but overlap is shared so effective embedding text stays
+ * under 256 tokens). Overlap is measured in characters and split at sentence
+ * boundaries.
  */
-export const CHUNK_OVERLAP = 150
+export const CHUNK_OVERLAP = 200
 /**
  * Default number of search results returned to the user.
  *

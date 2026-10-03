@@ -6,11 +6,23 @@ export type DocumentStatus =
   | 'indexed'
   | 'error'
 
+/**
+ * Source file type. DOC/DOCX are rejected at upload validation.
+ */
+export type DocumentType = 'pdf' | 'txt' | 'md'
+
+/**
+ * Canonical downstream format after source adaptation.
+ * - `markdown`: simplified Markdown (heading markers + plain body)
+ * - `text`: literal plain text, never parsed as Markdown
+ */
+export type ContentFormat = 'markdown' | 'text'
+
 export type DocumentMeta = {
   id: string
   libraryId: string
   name: string
-  type: 'pdf' | 'docx' | 'txt' | 'md'
+  type: DocumentType
   size: number
   createdAt: number
   updatedAt: number

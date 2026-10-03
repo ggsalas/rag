@@ -1,6 +1,5 @@
 import { expose } from 'comlink'
 import init, { LiteParse } from '@llamaindex/liteparse-wasm'
-import { extractRawText } from 'mammoth'
 
 let liteParseReady: Promise<void> | null = null
 
@@ -11,7 +10,7 @@ function ensureLiteParse(): Promise<void> {
 }
 
 export interface ParseResult {
-  /** Extracted text — markdown for PDF, raw text otherwise */
+  /** Extracted text — Markdown output from LiteParse */
   text: string
 }
 
@@ -20,13 +19,12 @@ export type ParseProgressCallback = (
   total: number,
 ) => void | Promise<void>
 
+/** PDF-only parser worker API. No DOCX/TXT methods — text formats are read directly. */
 export interface ParserWorkerAPI {
   parsePdf(
     buffer: ArrayBuffer,
     onProgress?: ParseProgressCallback,
   ): Promise<ParseResult>
-  parseDocx(buffer: ArrayBuffer): Promise<ParseResult>
-  parseText(text: string): Promise<ParseResult>
 }
 
 /** Parses a PDF file into structured markdown using LiteParse (PDFium) */
@@ -57,16 +55,5 @@ async function parsePdf(
   }
 }
 
-/** Parses a DOCX file and extracts raw text content */
-async function parseDocx(buffer: ArrayBuffer): Promise<ParseResult> {
-  const result = await extractRawText({ arrayBuffer: buffer })
-  return { text: result.value }
-}
-
-/** Returns text content as-is (for TXT and MD files) */
-async function parseText(text: string): Promise<ParseResult> {
-  return { text }
-}
-
-const api: ParserWorkerAPI = { parsePdf, parseDocx, parseText }
+const api: ParserWorkerAPI = { parsePdf }
 expose(api)

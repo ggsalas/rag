@@ -30,6 +30,7 @@ import { describe, it, beforeAll } from 'vitest'
 import { create, insert, search, type AnyOrama } from '@orama/orama'
 import { resolve } from 'node:path'
 import { readFileSync, existsSync, writeFileSync, mkdirSync } from 'node:fs'
+import { createHash } from 'node:crypto'
 import {
   POSITIVE_CASES_V2,
   NEGATIVE_CASES_V2,
@@ -42,6 +43,7 @@ import {
   recallAtKGraded,
 } from './search-benchmark.ndcg'
 import { chunkMarkdown } from '@/services/ingest/chunking.service'
+import { normalizeMarkdown } from '@/services/ingest/markdown/normalize-markdown.service'
 import { ENGLISH_STOP_WORDS_ARRAY } from '@/lib/stop-words'
 import {
   EMBEDDING_DIMENSIONS,
@@ -148,7 +150,9 @@ function loadOldChunks(): ChunkShape[] {
 }
 
 function rechunkNew(content: string, documentId: string, documentName: string): ChunkShape[] {
-  const chunked = chunkMarkdown(content)
+  // Apply target normalization pipeline before chunking (matches production ingest)
+  const normalized = normalizeMarkdown(content)
+  const chunked = chunkMarkdown(normalized)
   return chunked.map((c, i) => ({
     chunkId: `new::${documentId}::${i}`,
     documentId,
@@ -180,18 +184,51 @@ async function generateEmbeddings(texts: string[]): Promise<number[][]> {
 }
 
 /**
+ * Computes a deterministic hash of chunk texts for cache validation.
+ * This ensures cache invalidation when content changes, even if chunk count stays the same.
+ */
+function computeChunksHash(chunks: ChunkShape[]): string {
+  const hash = createHash('sha256')
+  for (const chunk of chunks) {
+    hash.update(chunk.text)
+    hash.update(chunk.searchText)
+    hash.update(chunk.sectionPath.join('|'))
+    hash.update(chunk.headingText)
+    hash.update('|')
+  }
+  return hash.digest('hex').slice(0, 16) // Use first 16 chars for brevity
+}
+
+/**
+ * Computes a deterministic hash of query texts for cache validation.
+ */
+function computeQueriesHash(queries: string[]): string {
+  const hash = createHash('sha256')
+  for (const query of queries) {
+    hash.update(query)
+    hash.update('|')
+  }
+  return hash.digest('hex').slice(0, 16)
+}
+
+/**
  * Loads or generates embeddings for chunks, with disk caching.
+ * Uses content hash to detect when chunk content has changed.
  */
 async function getOrGenerateEmbeddings(
   chunks: ChunkShape[],
   cachePath: string,
   label: string,
 ): Promise<number[][]> {
+  const contentHash = computeChunksHash(chunks)
+
   if (existsSync(cachePath)) {
     console.log(`  Loading cached ${label} embeddings from ${cachePath}`)
     const cached = JSON.parse(readFileSync(cachePath, 'utf-8'))
-    if (cached.length === chunks.length) return cached
-    console.log(`  Cache stale (${cached.length} vs ${chunks.length} chunks), regenerating`)
+    if (cached.hash === contentHash && cached.embeddings?.length === chunks.length) {
+      return cached.embeddings
+    }
+    console.log(`  Cache stale (hash or length mismatch), regenerating`)
   }
 
   console.log(`  Generating ${label} embeddings for ${chunks.length} chunks...`)
@@ -201,22 +238,26 @@ async function getOrGenerateEmbeddings(
   if (!existsSync(EMBEDDINGS_CACHE_DIR)) {
     mkdirSync(EMBEDDINGS_CACHE_DIR, { recursive: true })
   }
-  writeFileSync(cachePath, JSON.stringify(embeddings))
-  console.log(`  Cached ${label} embeddings to ${cachePath}`)
+  writeFileSync(cachePath, JSON.stringify({ hash: contentHash, embeddings }))
+  console.log(`  Cached ${label} embeddings to ${cachePath} (hash: ${contentHash})`)
   return embeddings
 }
 
 /**
  * Loads or generates embeddings for queries, with disk caching.
- * Detects length mismatch (e.g. when new queries are added to the dataset).
+ * Uses content hash to detect when query texts have changed.
  */
 async function getOrGenerateQueryEmbeddings(
   queries: string[],
 ): Promise<number[][]> {
+  const contentHash = computeQueriesHash(queries)
+
   if (existsSync(QUERY_EMBEDDINGS_CACHE)) {
     const cached = JSON.parse(readFileSync(QUERY_EMBEDDINGS_CACHE, 'utf-8'))
-    if (cached.length === queries.length) return cached
-    console.log(`  Query cache stale (${cached.length} vs ${queries.length} queries), regenerating`)
+    if (cached.hash === contentHash && cached.embeddings?.length === queries.length) {
+      return cached.embeddings
+    }
+    console.log(`  Query cache stale (hash or length mismatch), regenerating`)
   }
 
   console.log(`  Generating embeddings for ${queries.length} queries...`)
@@ -225,7 +266,7 @@ async function getOrGenerateQueryEmbeddings(
   if (!existsSync(EMBEDDINGS_CACHE_DIR)) {
     mkdirSync(EMBEDDINGS_CACHE_DIR, { recursive: true })
   }
-  writeFileSync(QUERY_EMBEDDINGS_CACHE, JSON.stringify(embeddings))
+  writeFileSync(QUERY_EMBEDDINGS_CACHE, JSON.stringify({ hash: contentHash, embeddings }))
   return embeddings
 }
 

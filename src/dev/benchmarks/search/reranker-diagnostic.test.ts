@@ -18,6 +18,7 @@ import {
 } from './search-benchmark.dataset.v2'
 import { chunkRelevanceGrade } from './search-benchmark.relevance'
 import { chunkMarkdown } from '@/services/ingest/chunking.service'
+import { normalizeMarkdown } from '@/services/ingest/markdown/normalize-markdown.service'
 import { ENGLISH_STOP_WORDS_ARRAY } from '@/lib/stop-words'
 import { EMBEDDING_DIMENSIONS } from '@/lib/constants'
 
@@ -54,7 +55,9 @@ function loadRawContent() {
 }
 
 function rechunkNew(content: string, documentId: string, documentName: string): ChunkShape[] {
-  const chunked = chunkMarkdown(content)
+  // Production path: normalizeMarkdown → chunkMarkdown
+  const normalized = normalizeMarkdown(content)
+  const chunked = chunkMarkdown(normalized)
   return chunked.map((c, i) => ({
     chunkId: `new::${documentId}::${i}`,
     documentId, documentName,

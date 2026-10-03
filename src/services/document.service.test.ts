@@ -58,19 +58,114 @@ describe('document.service', () => {
       })
       expect(pdf.type).toBe('pdf')
 
-      const docx = await createDocument(library.id, {
-        name: 'doc.docx',
-        size: 1000,
-        type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      })
-      expect(docx.type).toBe('docx')
-
       const txt = await createDocument(library.id, {
         name: 'doc.txt',
         size: 1000,
         type: 'text/plain',
       })
       expect(txt.type).toBe('txt')
+    })
+
+    it('should reject unsupported file types', async () => {
+      const library = await createLibrary('My Library')
+
+      // DOCX is unsupported
+      await expect(
+        createDocument(library.id, {
+          name: 'doc.docx',
+          size: 1000,
+          type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        }),
+      ).rejects.toThrow('unsupported file type')
+
+      // Unknown extension
+      await expect(
+        createDocument(library.id, {
+          name: 'doc.xyz',
+          size: 1000,
+          type: 'application/octet-stream',
+        }),
+      ).rejects.toThrow('unsupported file type')
+    })
+
+    it('should not create document row when rejection happens', async () => {
+      const library = await createLibrary('My Library')
+
+      // Try to create a DOCX document (should be rejected)
+      await expect(
+        createDocument(library.id, {
+          name: 'doc.docx',
+          size: 1000,
+          type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        }),
+      ).rejects.toThrow()
+
+      // Verify no document was created in the database
+      const docs = await getDocumentsByLibrary(library.id)
+      expect(docs).toHaveLength(0)
+
+      // Verify library documentCount was not incremented
+      const updatedLibrary = await db.libraries.get(library.id)
+      expect(updatedLibrary?.documentCount).toBe(0)
+    })
+
+    it('should reject .docx even with text/plain MIME type', async () => {
+      const library = await createLibrary('My Library')
+
+      // .docx with text/plain MIME should still be rejected (extension-based validation)
+      await expect(
+        createDocument(library.id, {
+          name: 'report.docx',
+          size: 1000,
+          type: 'text/plain',
+        }),
+      ).rejects.toThrow('unsupported file type')
+
+      // Verify no document was created
+      const docs = await getDocumentsByLibrary(library.id)
+      expect(docs).toHaveLength(0)
+    })
+
+    it('should reject .csv even with text/plain MIME type', async () => {
+      const library = await createLibrary('My Library')
+
+      // .csv with text/plain MIME should be rejected (extension-based validation)
+      await expect(
+        createDocument(library.id, {
+          name: 'data.csv',
+          size: 1000,
+          type: 'text/plain',
+        }),
+      ).rejects.toThrow('unsupported file type')
+
+      // Verify no document was created
+      const docs = await getDocumentsByLibrary(library.id)
+      expect(docs).toHaveLength(0)
+    })
+
+    it('should handle case-insensitive file extensions', async () => {
+      const library = await createLibrary('My Library')
+
+      const pdfUpper = await createDocument(library.id, {
+        name: 'DOC.PDF',
+        size: 1000,
+        type: '',
+      })
+      expect(pdfUpper.type).toBe('pdf')
+
+      const mdUpper = await createDocument(library.id, {
+        name: 'README.MD',
+        size: 1000,
+        type: '',
+      })
+      expect(mdUpper.type).toBe('md')
+
+      const txtUpper = await createDocument(library.id, {
+        name: 'NOTES.TXT',
+        size: 1000,
+        type: '',
+      })
+      expect(txtUpper.type).toBe('txt')
     })
 
     it('should infer document type from file extension', async () => {

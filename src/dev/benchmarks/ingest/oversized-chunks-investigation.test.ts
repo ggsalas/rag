@@ -1,3 +1,8 @@
+/**
+ * Diagnostic: identifies chunks exceeding token limit on raw content.
+ * NOTE: Tests chunking size mechanics in isolation. Does NOT represent the
+ * production pipeline (normalizeMarkdown → chunkMarkdown).
+ */
 import { describe, it } from 'vitest'
 import { resolve } from 'node:path'
 import { chunkMarkdown } from '@/services/ingest/chunking.service'

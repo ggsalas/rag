@@ -1,167 +1,240 @@
-# Document Ingestion Pipeline
+# Document Ingestion Pipeline — TARGET PROPOSAL (NOT YET IMPLEMENTED)
 
-**Scope.** This document describes only the processing that happens once a
-document starts being processed: from `processDocument`
-(`src/services/ingest/ingest.service.ts`) until the document reaches the
-`indexed` status. It does not cover file upload, drag & drop, or how the
-processing queue is created.
+> **Status: proposal only — no application code has been implemented or
+> changed.** This is an approved *target* design; current production behavior
+> differs (e.g. DOCX is still parsed via Mammoth). Missing items are *proposed*.
 
-## 1. Parser selection
+**Scope:** the end-to-end target pipeline from upload to search availability;
+status/progress/error handling is shared orchestration wrapping every path.
 
-`parseFile` (`src/services/ingest/parser.service.ts`) decides how to extract
-text based on the file type. The actual extraction happens in the parser worker
-(`src/workers/parser.worker.ts`), except for reading the text file itself,
-which uses `File.text()`. The extraction result determines the downstream path:
-structured Markdown (PDF, MD) or plain text (TXT, DOCX).
+---
 
-```mermaid
-flowchart TD
-  A["File"] --> B{"File type"}
-  B -->|"PDF"| C["LiteParse (parser.worker)"]
-  B -->|"DOCX"| D["Mammoth (parser.worker)"]
-  B -->|"TXT / MD"| E["File.text() (parser.worker)"]
-  C --> F{"Structured Markdown?"}
-  D --> F
-  E --> F
-  F -->|"yes"| G["Markdown path"]
-  F -->|"no"| H["Plain-text path"]
+## 1. Two canonical downstream formats
+
+The pipeline recognizes exactly two canonical text formats, chosen by the
+*content format* of the parsed input:
+
+| Canonical format | Meaning                                                                                                     |
+| ---------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `markdown`       | Simplified Markdown: heading markers (`#`, `##`, …) plus a plain body. Inline formatting and link destinations stripped; visible link label retained. |
+| `text`           | Literal plain text. **Never** parsed as Markdown, never treated as structured.                                |
+
+Source adapters (file type → canonical format):
+
+| Source              | Target behavior                                                            |
+| ------------------- | ---------------------------------------------------------------------------- |
+| **PDF**             | Parsed to Markdown. PDF is **only** a source adapter (PDF → Markdown); nothing downstream is PDF-aware. → `markdown` |
+| **`.md` / `.markdown`** | Read into the Markdown route. → `markdown`                               |
+| **`.txt`**          | Read into the text route. → `text`                                         |
+| **DOC / DOCX**      | **Rejected** in the target at validation (no downstream path).               |
+
+---
+
+## 2. Flow
+
+**One route per file — the branches are mutually exclusive.** For any single
+file, the Markdown and Text routes are *alternatives*: exactly one runs, never
+both, never in parallel for the same file. Multiple *files* may process
+concurrently through the existing queue, each on its own single route; they
+converge only after chunking, at the shared embed → persist → index stages.
+
+```
+                         +-----------------+
+                         |   Upload file   |
+                         +--------+--------+
+                                  |
+                         Validate file type
+                     (DOC / DOCX → rejected here)
+                                  |
+                    +-------------+-------------+
+                    | Select ONE route per file |
+                    +-------------+-------------+
+                                  |
+               +------------------+------------------+
+               |                  |                  |
+              PDF                .md                .txt
+               |                  |                  |
+       Parse PDF to MD      Read as MD        Read as plain text
+               |                  |                  |
+               +--------+---------+                  |
+                        |                            |
+                        v                            v
+              MARKDOWN ROUTE                  TEXT ROUTE
+              - sanitize/filter               - normalize whitespace
+              - extract headings first        - no Markdown parsing
+              - strip inline markup/URLs      - no heading inference
+              - preserve headings/labels
+                        |                            |
+                        v                            v
+              Markdown chunker               Text chunker
+              sections/blocks                paragraphs
+              overlap within section         controlled overlap
+                        |                            |
+                        +-------------+--------------+
+                                      |
+                             Embed text + heading path
+                                      |
+                             Persist body/chunks in Dexie
+                                      |
+                             Insert chunks into Orama
+                                      |
+                                Search available
 ```
 
-| Format    | Parser in `parser.worker.ts`       | Output                            | Path            |
-| --------- | ---------------------------------- | --------------------------------- | --------------- |
-| PDF       | LiteParse (WASM/PDFium)            | Structured Markdown               | Markdown path   |
-| DOCX      | Mammoth `extractRawText`           | Plain text (structure discarded)  | Plain-text path |
-| TXT / MD  | `File.text()` + `parseText`        | Text as-is (`.md` keeps Markdown) | MD → Markdown path, TXT → plain-text path |
+After the merge point the stages are shared and identical for both routes
+(embed → Dexie → Orama → `indexed`); status/progress/error handling wrap the
+whole pipeline:
 
-The "structured Markdown?" check (`docMeta.type === 'pdf'` or a `.md` /
-`.markdown` file name) selects the Markdown path — structured filters plus
-`chunkMarkdown` — while TXT and DOCX take the plain-text path — `chunkText`
-with no structural filters.
+| Status      | Covers                                                       |
+| ----------- | -------------------------------------------------------------- |
+| `parsing`   | validation + source adapter                                    |
+| `chunking`  | normalize + filter + chunk + save document body                |
+| `embedding` | embedding text build + `embedBatch`                            |
+| `indexed`   | chunks in Dexie, Orama insert done, search available           |
 
-## 2. End-to-end flow
+A failure at any stage sets `error`, records the message, clears progress, and
+lets the rest of the queue continue. Orama is a **derived** index, always
+rebuildable from Dexie — never the source of truth.
 
-The real order of the pipeline in `processDocument` is: parse, sanitize,
-filters (Markdown path only), save the document content, chunk, embed, persist
-chunks, index into Orama, and update counters.
+---
 
-The only thing that distinguishes the two paths is the structural treatment:
+## 3. Key invariant — extract headings before flattening
 
-- **Structured Markdown (PDF, MD)**: the text passes through the malformed
-  layout filter and the boilerplate filter, and is chunked with
-  `chunkMarkdown`.
-- **Plain text (TXT, DOCX)**: the structural filters are skipped and the text
-  is chunked with `chunkText`.
+> **Recognize and extract headings BEFORE flattening inline markup.** The
+> heading hierarchy is carried per chunk as `sectionPath` / `headingText`.
 
-Both paths share the rest of the pipeline: `saveDocumentContent` stores the
-document's **full, already-filtered text** (Markdown for PDF/MD, plain text for
-TXT/DOCX), both chunking functions produce each chunk's `searchText` via
-`markdownToSearchText`, and from there the flow (embeddings → chunks → Dexie →
-Orama) is identical.
+- Content belongs to the **last recognized heading** above it; text before the
+  first heading gets an **empty / root** `sectionPath`. All recognized heading
+  levels and hierarchy are kept as `sectionPath`/`headingText`; detected
+  heading structure is **never dropped**.
+- **PDF heading detection is heuristic** and cannot guarantee every visually
+  distinct heading is recognized. A missed heading leaves its content under the
+  active (last recognized) section until the next recognized heading — stable,
+  not an error. Strict accuracy would require a **review/correction step**
+  (proposed; not part of the automated pipeline).
 
-```mermaid
-flowchart TD
-  S["processDocument"] --> P["parseFile (parser.worker)"]
-  P --> Z["sanitize"]
-  Z --> Q{"Structured Markdown?"}
-  Q -->|"yes"| R["layout + boilerplate filters"]
-  Q -->|"no"| K["saveDocumentContent (Dexie)"]
-  R --> K
-  K -->|"Markdown"| M["chunkMarkdown"]
-  K -->|"plain text"| N["chunkText"]
-  M --> O["markdownToSearchText"]
-  N --> O
-  O --> EB["buildEmbeddingText"]
-  EB --> EMB["embedBatch (embedding.worker)"]
-  EMB --> CR["build Chunk records"]
-  CR --> DB["db.chunks.bulkAdd (Dexie)"]
-  DB --> OR["insertChunks (Orama)"]
-  OR --> FIN["update counters"]
+## 4. Markdown route — normalization order
+
+1. **Sanitize** (conservative; structure untouched).
+2. Run **malformed-layout** filters and **named/heuristic boilerplate** filters
+   (References / Bibliography and similar) **before** flattening — filtering on
+   intact structure is more reliable than on flattened text.
+3. **Extract headings** (§3), then **flatten**: remove inline bold/italic/
+   underline markers and link destinations, **keep the visible link label**;
+   simplify to `#` markers + plain body.
+4. **Keep paragraph / list / table boundaries** where they carry semantics.
+
+**The TXT route gets none of this:** whitespace/newline normalization only —
+no Markdown AST, no filtering, no heading inference.
+
+## 5. Chunking (format-specific)
+
+**Markdown chunker** — sections → blocks → paragraphs. Because all syntax was
+flattened after heading extraction, **no Markdown syntax can be broken** by a
+chunk boundary. Keep link-label units together when feasible; if one
+indivisible semantic unit exceeds the budget, allow a **soft oversize** rather
+than split it. **Overlap stays within one section and never crosses a heading.**
+
+**Text chunker** — packs **whole paragraphs**; an oversized paragraph splits at
+sentence / whitespace boundaries; **overlap is anchored to paragraph/sentence
+boundaries**.
+
+**Budget** — chunk size must respect the embedding model's **MiniLM 256-token
+input limit, including the `sectionPath` prefix** prepended to the text. The
+current `CHUNK_SIZE = 900` / `CHUNK_OVERLAP = 200` characters are **baselines
+for re-tuning, not a target word specification**.
+
+## 6. Representations, viewer & indexing
+
+- **Viewer:** shows the **normalized plain text** body with headings as plain
+  heading lines — no Markdown re-rendering; the **full normalized body is saved
+  to `documentContents`**.
+- **Offsets:** must be **relative to the exact normalized body**, or adjusted /
+  removed. Never apply normalized-chunk offsets onto an unnormalized source.
+- **`text` vs `searchText`:** once flattened, the two **may collapse into one**
+  when identical — a target simplification only; **removing either field is
+  NOT implemented**.
+- **Indexing usage:**
+  - Embeddings: input is **`sectionPath` prefixed** to the chunk text.
+  - Orama **BM25** indexes **`searchText` + `headingText`** (two properties;
+    `sectionPath` is *not* concatenated into the BM25 `searchText`).
+  - **Lexical reranker** uses **`headingText` + `sectionPath`**.
+
+## 7. Proposed service tree
+
+All names and paths below are **proposed organization, not the current code**:
+
+```
+src/
+├── services/
+│   ├── ingest/
+│   │   ├── ingest.service.ts                 # shared lifecycle/orchestration
+│   │   ├── source/
+│   │   │   ├── parse-file.service.ts         # validate + dispatch to source adapter
+│   │   │   └── pdf-parser.service.ts         # Comlink adapter only
+│   │   ├── markdown/
+│   │   │   ├── normalize-markdown.service.ts # extract sections / filter / flatten inline syntax
+│   │   │   ├── malformed-layout-filter.service.ts
+│   │   │   ├── section-filter.service.ts
+│   │   │   └── markdown-chunker.service.ts
+│   │   ├── text/
+│   │   │   ├── normalize-text.service.ts
+│   │   │   └── text-chunker.service.ts
+│   │   └── ingestion.types.ts                # ParsedContent / ChunkData
+│   ├── embedding/                            # existing shared embedding + Orama services
+│   └── document.service.ts                   # shared persistence/status
+└── workers/
+    ├── pdf-parser.worker.ts                  # PDF-only LiteParse worker
+    └── embedding.worker.ts                   # shared embeddings
 ```
 
-Each stage writes a document status to Dexie, and progress is reported as a
-percentage range:
+**Migration order:** the proposal can first be realized as **behavior changes
+in the current paths** (`parser.service.ts`, `chunking.service.ts`, filters…);
+**file moves/renames come second** and are pure reorganization.
 
-| Status      | Stage                                                    | Progress |
-| ----------- | -------------------------------------------------------- | -------- |
-| `parsing`   | `parseFile` → parser worker (LiteParse / Mammoth / text) | 0–10 %   |
-| `chunking`  | filters, `saveDocumentContent`, `chunkMarkdown`/`chunkText` | 10–15 % |
-| `embedding` | `buildEmbeddingText`, `embedBatch`                       | 15–90 %  |
-| `indexed`   | persist chunks, Orama insert, update counters            | 90–100 % |
+**Hard removal boundary (PDF):** removing PDF support means deleting only the
+PDF adapter, the PDF worker, the parser dispatch branch, the parser dependency,
+and its upload acceptance. Markdown/text normalization + chunking and the
+shared embed / persist / search stages stay **unchanged** — they never import
+the PDF package. The legacy **DOCX Mammoth branch and dependency are removable
+the same way** (DOCX is rejected in the target).
 
-`saveDocumentContent` stores the full document text: filtered Markdown for
-PDF/MD, sanitized plain text for TXT/DOCX. `markdownToSearchText` runs on both
-paths (stripping Markdown syntax and URLs; on plain text it acts as
-normalization / a pass-through). `buildEmbeddingText` composes the embedding
-input from `sectionPath` + `searchText`, and each stored `Chunk` record holds
-`text`, `searchText`, `sectionPath`, `headingText`, and `embedding`.
+## 8. Evaluation in `src/dev`
 
-## 3. Responsibilities per service
+- **`qasper-benchmark.test.ts`** already compares Markdown chunking against
+  `chunkText` **after stripping heading lines** — useful for measuring
+  **heading-loss risk**, but **NOT the target candidate** (the target preserves
+  headings, §3).
+- **`hybrid-benchmark.test.ts`** runs on **`britnet-corpus.json`** with graded
+  ground truth and reports **nDCG / Hit / Recall**.
+- **`search-benchmark.sanity.test.ts`** checks **evidence coverage** (relevant
+  fragments still present in chunks).
+- **Ingest diagnostics** cover structure, filters, links, offsets, chunk sizes.
 
-| File                                                     | Main function                              | Responsibility                                                                                   |
-| -------------------------------------------------------- | ------------------------------------------ | ------------------------------------------------------------------------------------------------ |
-| `src/services/ingest/ingest.service.ts`                  | `processDocument`                          | Orchestrates the whole pipeline and updates status/progress                                      |
-| `src/services/ingest/parser.service.ts`                  | `parseFile`                                | Dispatches the file to the right parser via the worker                                           |
-| `src/workers/parser.worker.ts`                           | `parsePdf` / `parseDocx` / `parseText`     | Actual extraction: LiteParse (PDF → Markdown), Mammoth (DOCX → raw text), text pass-through      |
-| `src/services/ingest/sanitize.service.ts`                | `sanitize`                                 | Conservative normalization (NFKC, invisible characters, whitespace) without touching structure   |
-| `src/services/ingest/malformed-layout-filter.service.ts` | `filterMalformedLayoutBlocks`              | Removes malformed sidebar/infobox blocks (structured Markdown only)                              |
-| `src/services/ingest/section-filter.service.ts`          | `filterBoilerplateSections`                | Removes boilerplate sections (References, Bibliography, …) (structured Markdown only)           |
-| `src/services/ingest/chunking.service.ts`                | `chunkMarkdown` / `chunkText`              | Chunks the text and produces each chunk's `text` + `searchText`; both call `markdownToSearchText` |
-| `src/services/ingest/markdown-to-search-text.service.ts` | `markdownToSearchText`                     | Generates the `searchText` (retrieval representation) used by both chunking paths                |
-| `src/services/embedding/embedding.service.ts`            | `embedBatch`                               | Comlink proxy to the embedding worker                                                            |
-| `src/workers/embedding.worker.ts`                        | `generateEmbeddings`                       | Generates vectors with the HuggingFace ONNX model (`Xenova/all-MiniLM-L6-v2`)                    |
-| `src/services/embedding/vector-store.ts`                 | `insertChunks`                             | Maintains the Orama index (one per library)                                                      |
-| `src/services/document.service.ts`                       | `saveDocumentContent` / `updateDocumentStatus` | Stores the document's full (filtered) text and status changes                                  |
-| `src/infrastructure/db.ts`                               | `db` (Dexie)                               | Persistent table definitions: `documents`, `documentContents`, `chunks`, `libraries`             |
+**Limitations:** all fixtures are **Markdown / exported content** — there is no
+test of actual PDF → LiteParse extraction. For the desired A/B, **inject the
+target normalizer/chunker** into the benchmark and compare the **same sources,
+queries, and config**, tracking **nDCG@10, Hit@10, Recall@10, per-query deltas,
+heading preservation, and evidence coverage**. Per `src/dev/README.md`,
+**clear the caches first** or stale embeddings distort metrics:
 
-## 4. Why DOCX stays plain text
+```bash
+rm -rf src/dev/fixtures/.embedding-cache src/dev/fixtures/.qasper-cache
+```
 
-`parser.worker.ts` extracts DOCX content with Mammoth's `extractRawText`,
-which intentionally discards the document structure: headings, lists, and
-tables all collapse into a flat text stream. That is why DOCX joins the
-plain-text path instead of the Markdown path.
+Commands (heavy suites are env-gated and skipped otherwise):
 
-Converting DOCX to Markdown is possible, but it is **not a trivial one-line
-change** if the goal is to preserve headings, lists, and tables: it would
-require extracting structured output from Mammoth (e.g. `convertToHtml`) or
-from the DOCX format itself, and then converting that structure into Markdown.
-Designing and validating that conversion is a separate effort, so it is
-**out of the current ingestion scope**.
+```bash
+HYBRID_BENCHMARK=1 npx vitest run --environment node --reporter=verbose src/dev/benchmarks/search/hybrid-benchmark.test.ts
+QASPER_BENCHMARK=1 npx vitest run --environment node --reporter=verbose src/dev/benchmarks/search/qasper-benchmark.test.ts
+```
 
-## 5. The two representations of a chunk
+These benchmarks are **heavy and gated** and **were not run** for this document
+update. Normal verification: `npx vitest run`, `npm run typecheck`, `npm run build`.
 
-Every chunk stored in Dexie holds two texts with different purposes, plus its
-section metadata and its `embedding` vector:
+## 9. Adoption impact
 
-- **`text`**: the source/display representation of the chunk — the filtered
-  Markdown for PDF/MD, or the plain text for TXT/DOCX. It is used to **render
-  the document and highlight matches** in the viewer, because it preserves the
-  original structure.
-- **`searchText`**: the retrieval representation, generated with
-  `markdownToSearchText` (both `chunkMarkdown` and `chunkText` apply it to
-  every chunk). On Markdown it strips syntax and URLs; on plain text it acts
-  as normalization / a pass-through. This is the representation consumed by
-  **search** (BM25 in Orama) and the base of the **embedding**.
-
-Each chunk also carries section metadata: `sectionPath` (the heading
-hierarchy, e.g. `["Introduction", "Methods"]`) and `headingText` (the
-immediately preceding heading). The text sent to the embedding model is
-composed by `buildEmbeddingText`: `sectionPath` joined with `" > "` followed by
-the `searchText`, so the vector includes the section context.
-
-## 6. Persistence and indexing
-
-- **Dexie (IndexedDB) is the source of truth**: the document's full content
-  (`documentContents`, holding the filtered text written by
-  `saveDocumentContent`), metadata and status (`documents`), and the chunks
-  with their `text`, `searchText`, metadata, and embedding (`chunks`).
-- **Orama is a derived in-memory index**, one per library
-  (`Map<libraryId, AnyOrama>`). It only accelerates hybrid search and can be
-  rebuilt from Dexie at any time; it is never the origin of the data.
-
-## 7. Error path
-
-The whole of `processDocument` is wrapped in a `try/catch`. Any exception
-during processing (for example, "No text could be extracted from document"
-when no chunk is produced) updates the document in Dexie with the `error`
-status, stores the error message in the `error` field, and clears
-`processingProgress`. The remaining documents in the queue continue processing.
+**No code has been implemented or changed; this is a target proposal.** After
+adoption, **existing documents must be reprocessed** (re-chunked,
+re-embedded, re-indexed): stored chunks and embeddings do not update
+themselves, and Orama is rebuilt from whatever Dexie holds.

@@ -36,6 +36,7 @@ import {
 import { relevanceVector } from './search-benchmark.relevance'
 import { ndcgAtK, hitAtKGraded } from './search-benchmark.ndcg'
 import { chunkMarkdown } from '@/services/ingest/chunking.service'
+import { normalizeMarkdown } from '@/services/ingest/markdown/normalize-markdown.service'
 import { ENGLISH_STOP_WORDS_ARRAY } from '@/lib/stop-words'
 import { EMBEDDING_DIMENSIONS, RERANKER_ABSTENTION_THRESHOLD } from '@/lib/constants'
 import { rankByLexicalRelevance } from '@/lib/lexical-ranking'
@@ -94,7 +95,9 @@ function loadRawContent() {
 }
 
 function rechunkNew(content: string, documentId: string, documentName: string): ChunkShape[] {
-  const chunked = chunkMarkdown(content)
+  // Production path: normalizeMarkdown → chunkMarkdown
+  const normalized = normalizeMarkdown(content)
+  const chunked = chunkMarkdown(normalized)
   return chunked.map((c, i) => ({
     chunkId: `new::${documentId}::${i}`,
     documentId,

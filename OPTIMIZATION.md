@@ -45,7 +45,7 @@ El pipeline de punta a punta, con los valores reales del código:
 
 ### 2.1 Ingestión y chunking
 
-- **Parser**: `@llamaindex/liteparse-wasm` (PDF) / `mammoth` (DOCX) → Markdown.
+- **Parser**: `@llamaindex/liteparse-wasm` (PDF) → Markdown. TXT/MD se leen directamente.
 - **Sanitización**: `remark` (unified) con AST; conserva la estructura Markdown.
 - **Chunking** (`src/services/ingest/chunking.service.ts`):
   - `CHUNK_SIZE = 900` caracteres de Markdown.
@@ -569,9 +569,9 @@ answerability, calibración de confianza del cross-encoder, o detección de
 alucinación post-retrieval. El umbral actual es una defensa contra consultas
 completamente fuera de dominio, no contra preguntas sin respuesta.
 
-### 6.7 Coste de la ruta de texto plano (.docx)
+### 6.7 Coste de la ruta de texto plano (.txt)
 
-Los `.docx` se trocean con `chunkText` en lugar de `chunkMarkdown` (ver §7), así
+Los `.txt` se trocean con `chunkText` en lugar de `chunkMarkdown` (ver §7), así
 que se midió el coste de esa ruta sobre el mismo contenido de QASPER, con las
 mismas 16 preguntas positivas:
 
@@ -585,7 +585,7 @@ La diferencia es **−0.0359 en nDCG@10 (−3,6 puntos), 0 en Hit@10**.
 
 **Conclusión**: degradación menor. Perder el contexto de sección cuesta
 precisión en la ORDENACIÓN pero no afecta a si el chunk relevante se encuentra
-o no. Los `.docx` conservan el recall y pierden algo de ranking.
+o no. Los `.txt` conservan el recall y pierden algo de ranking.
 
 ### 6.8 Reproducir
 
@@ -625,14 +625,6 @@ Archivos relevantes:
 
 - **Sin cross-encoder cargado, la búsqueda queda bloqueada**. La UI muestra el
   error y permite reintentar la carga.
-
-- **Los documentos `.docx` se indexan sin contexto de sección.** En
-  `src/services/ingest/ingest.service.ts`, `isStructuredMarkdown` sólo es cierto
-  para PDF y `.md`/`.markdown`, de modo que los `.docx` se trocean con
-  `chunkText`, que deja `sectionPath` y `headingText` vacíos. Como
-  `buildEmbeddingText` antepone `sectionPath` al texto que se embebe, los
-  documentos Word pierden esa señal. Coste medido: −3,6 puntos de nDCG@10, sin
-  impacto en Hit@10. Severidad baja; no se ha corregido.
 
 - **Los tests no cubren las rutas de React Router.** El fallo de importación
   que rompió la app no lo detectó ni la suite ni el typecheck de entonces.

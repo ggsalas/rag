@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { markdownToSearchText } from './markdown-to-search-text.service'
+import { normalizeMarkdown } from './markdown/normalize-markdown.service'
 
 describe('markdownToSearchText', () => {
   it('returns empty string for empty input', () => {
@@ -164,49 +165,6 @@ def foo():
     expect(out).not.toContain('>')
   })
 
-  it('removes Wikipedia-style numeric citation markers', () => {
-    const input =
-      'The language was created in 1972.[6] It is widely used.[10] See also.[1, 2, 3]'
-    const out = markdownToSearchText(input)
-    expect(out).toContain('The language was created in 1972.')
-    expect(out).toContain('It is widely used.')
-    expect(out).toContain('See also.')
-    expect(out).not.toContain('[6]')
-    expect(out).not.toContain('[10]')
-    expect(out).not.toContain('[1, 2, 3]')
-  })
-
-  it('removes single-letter citation markers like [a] or [b]', () => {
-    const input = 'Some claim.[a] Another claim.[b]'
-    const out = markdownToSearchText(input)
-    expect(out).toContain('Some claim.')
-    expect(out).toContain('Another claim.')
-    expect(out).not.toContain('[a]')
-    expect(out).not.toContain('[b]')
-  })
-
-  it('removes escaped citation markers (normalized by remark)', () => {
-    // In Markdown, \[a\] and \[6\] are escaped brackets.
-    // remark normalizes them to [a] and [6] in text nodes,
-    // so our citation stripper should still remove them.
-    const input = 'A claim\\[a\\] and a reference\\[6\\].'
-    const out = markdownToSearchText(input)
-    expect(out).toContain('A claim')
-    expect(out).toContain('and a reference')
-    expect(out).not.toContain('[a]')
-    expect(out).not.toContain('[6]')
-  })
-
-  it('preserves meaningful bracketed content like [C++] or [API]', () => {
-    const input =
-      'We use [C++] for performance and [API] for integration. Also [Node.js] and [foo bar].'
-    const out = markdownToSearchText(input)
-    expect(out).toContain('[C++]')
-    expect(out).toContain('[API]')
-    expect(out).toContain('[Node.js]')
-    expect(out).toContain('[foo bar]')
-  })
-
   it('preserves link text and removes strong/emphasis markers', () => {
     const input =
       'Read the **[official docs](https://example.com)** for *more* info.'
@@ -220,17 +178,23 @@ def foo():
     expect(out).not.toContain('](')
   })
 
-  it('does not strip citations inside code blocks', () => {
-    const input = '```\nconst ref = [1];\nconst x = [a];\n```'
-    const out = markdownToSearchText(input)
-    expect(out).toContain('[1]')
-    expect(out).toContain('[a]')
-  })
+  it('normalized Markdown has no citation markers before searchText conversion', () => {
+    // Citation stripping is the responsibility of flattenInlineMarkup (called
+    // by normalizeMarkdown). This test proves that when markdownToSearchText
+    // receives already-normalized Markdown, citations are already gone.
+    const raw =
+      'JavaScript \\[a] is a language created in 1995.[6] See also [C++] and [1, 2].'
+    const normalized = normalizeMarkdown(raw)
+    const searchText = markdownToSearchText(normalized)
 
-  it('does not strip citations inside inline code', () => {
-    const input = 'Use `arr[0]` and `map[key]` to access.'
-    const out = markdownToSearchText(input)
-    expect(out).toContain('arr[0]')
-    expect(out).toContain('map[key]')
+    // Citations should be gone after normalization
+    expect(searchText).not.toContain('[6]')
+    expect(searchText).not.toContain('[a]')
+    expect(searchText).not.toContain('[1, 2]')
+    // Meaningful brackets preserved through the pipeline
+    expect(searchText).toContain('C++')
+    // Core content preserved
+    expect(searchText).toContain('JavaScript')
+    expect(searchText).toContain('created in 1995')
   })
 })

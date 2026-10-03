@@ -234,7 +234,10 @@ export function splitOversizedUnit(text: string, maxLen: number): string[] {
       pieces.push(...subPieces)
     } else {
       const sepLen = current.length > 0 ? 2 : 0
-      if (current.length + sepLen + sentence.length > maxLen && current.length > 0) {
+      if (
+        current.length + sepLen + sentence.length > maxLen &&
+        current.length > 0
+      ) {
         pieces.push(current)
         current = sentence
       } else {
@@ -385,12 +388,15 @@ export function extractOverlapText(
 
 /**
  * Chunks plain text by paragraphs (no heading awareness).
- * Used for .txt and .docx documents that lack Markdown structure.
+ * Used for .txt documents that lack Markdown structure.
  *
  * - Paragraphs that exceed `size` are split by sentences (never mid-word).
  * - Overlap is measured in characters, taken from the trailing sentences of
  *   the previous chunk.
  * - Chunks with empty or trivial searchText are discarded.
+ *
+ * NOTE: For the text route, prefer `text/text-chunker.service.ts` which
+ * sets searchText = text (no Markdown stripping needed for plain text).
  */
 export function chunkText(text: string, options?: ChunkOptions): ChunkData[] {
   const size = options?.size ?? CHUNK_SIZE
@@ -400,7 +406,10 @@ export function chunkText(text: string, options?: ChunkOptions): ChunkData[] {
   if (!text.trim()) return chunks
 
   // Split by blank-line paragraphs — each paragraph is an atomic unit
-  const paragraphs = text.split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean)
+  const paragraphs = text
+    .split(/\n\s*\n/)
+    .map((p) => p.trim())
+    .filter(Boolean)
 
   let currentUnits: string[] = []
   let currentLen = 0
@@ -431,9 +440,10 @@ export function chunkText(text: string, options?: ChunkOptions): ChunkData[] {
     // Split oversized paragraphs by sentences.
     // The first piece of a new chunk will have overlap prepended, so it must
     // leave room for the overlap.
-    const units = paragraph.length > size
-      ? splitOversizedUnit(paragraph, Math.max(size - overlap, size / 2))
-      : [paragraph]
+    const units =
+      paragraph.length > size
+        ? splitOversizedUnit(paragraph, Math.max(size - overlap, size / 2))
+        : [paragraph]
 
     for (const unit of units) {
       const sepLen = currentUnits.length > 0 ? 2 : 0 // '\n\n'
@@ -498,7 +508,6 @@ export function chunkMarkdown(
   // Convert sections to chunks
   const chunks: ChunkData[] = []
   let chunkIndex = 0
-  let prevChunkText = ''
 
   for (const section of sections) {
     const sectionPath = section.headingStack.map((h) => h.text)
@@ -508,6 +517,9 @@ export function chunkMarkdown(
         : ''
 
     if (section.blocks.length === 0) continue
+
+    // Reset overlap tracking per section — overlap must never cross heading boundaries
+    let prevChunkText = ''
 
     // Slice each block from original text using AST position offsets
     const slicedUnits = section.blocks.map((block) => sliceBlock(block, text))
@@ -519,21 +531,26 @@ export function chunkMarkdown(
     /** Join units into a chunk and push it */
     const flush = () => {
       if (currentUnits.length === 0) return
-      
+
       // Separate overlap (first unit with start=-1) from content proper
-      const hasOverlap = currentUnits.length > 0 && currentUnits[0]!.start === -1
+      const hasOverlap =
+        currentUnits.length > 0 && currentUnits[0]!.start === -1
       const contentUnits = hasOverlap ? currentUnits.slice(1) : currentUnits
-      
+
       // Build chunk text
-      const textParts = currentUnits.map(u => u.text)
+      const textParts = currentUnits.map((u) => u.text)
       const joined = textParts.join('\n\n')
       const searchText = markdownToSearchText(joined)
 
       // Skip chunks with empty or trivial searchText (no alphanumeric content)
       if (!isTrivialSearchText(searchText)) {
         // Compute sourceStart/sourceEnd from content proper (excluding overlap)
-        const sourceStart = contentUnits.length > 0 ? contentUnits[0]!.start : undefined
-        const sourceEnd = contentUnits.length > 0 ? contentUnits[contentUnits.length - 1]!.end : undefined
+        const sourceStart =
+          contentUnits.length > 0 ? contentUnits[0]!.start : undefined
+        const sourceEnd =
+          contentUnits.length > 0
+            ? contentUnits[contentUnits.length - 1]!.end
+            : undefined
 
         chunks.push({
           text: joined,
@@ -541,8 +558,12 @@ export function chunkMarkdown(
           sectionPath,
           headingText,
           chunkIndex,
-          sourceStart: sourceStart !== undefined && sourceStart >= 0 ? sourceStart : undefined,
-          sourceEnd: sourceEnd !== undefined && sourceEnd >= 0 ? sourceEnd : undefined,
+          sourceStart:
+            sourceStart !== undefined && sourceStart >= 0
+              ? sourceStart
+              : undefined,
+          sourceEnd:
+            sourceEnd !== undefined && sourceEnd >= 0 ? sourceEnd : undefined,
         })
         chunkIndex++
         prevChunkText = joined
@@ -728,7 +749,7 @@ function serializeBlocks(blocks: BlockContent[]): string {
 function sliceBlock(block: BlockContent, originalText: string): TextUnit {
   const start = block.position?.start?.offset
   const end = block.position?.end?.offset
-  
+
   if (start != null && end != null) {
     return {
       text: originalText.slice(start, end),
@@ -736,9 +757,11 @@ function sliceBlock(block: BlockContent, originalText: string): TextUnit {
       end,
     }
   }
-  
+
   // Fallback: serialize (should not happen with remark-parse, but handle gracefully)
-  console.warn('[chunking] Block missing position offsets, falling back to serialization')
+  console.warn(
+    '[chunking] Block missing position offsets, falling back to serialization',
+  )
   return {
     text: serializeBlocks([block]),
     start: -1,
@@ -858,7 +881,10 @@ function splitIntoSentencesWithPositions(
  * Uses position-tracked sentence splitting instead of indexOf-based search,
  * which is robust against trimming and whitespace normalization.
  */
-function splitOversizedUnitWithOffsets(unit: TextUnit, maxLen: number): TextUnit[] {
+function splitOversizedUnitWithOffsets(
+  unit: TextUnit,
+  maxLen: number,
+): TextUnit[] {
   if (unit.text.length <= maxLen) return [unit]
 
   const sentences = splitIntoSentencesWithPositions(unit.text)
@@ -895,7 +921,10 @@ function splitOversizedUnitWithOffsets(unit: TextUnit, maxLen: number): TextUnit
       }
     } else {
       const sepLen = current.length > 0 ? 2 : 0 // '\n\n'
-      if (current.length + sepLen + sentence.text.length > maxLen && current.length > 0) {
+      if (
+        current.length + sepLen + sentence.text.length > maxLen &&
+        current.length > 0
+      ) {
         // Flush current piece
         result.push({
           text: current,
@@ -910,7 +939,8 @@ function splitOversizedUnitWithOffsets(unit: TextUnit, maxLen: number): TextUnit
         if (current.length === 0) {
           currentStart = sentence.start
         }
-        current = current.length > 0 ? current + '\n\n' + sentence.text : sentence.text
+        current =
+          current.length > 0 ? current + '\n\n' + sentence.text : sentence.text
         currentEnd = sentence.end
       }
     }

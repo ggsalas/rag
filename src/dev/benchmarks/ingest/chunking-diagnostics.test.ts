@@ -1,3 +1,8 @@
+/**
+ * Diagnostic: chunking algorithm analysis on raw content.
+ * NOTE: Tests chunking mechanics (overlap, section tracking) in isolation.
+ * Does NOT represent the production pipeline (normalizeMarkdown → chunkMarkdown).
+ */
 import { describe, it } from 'vitest'
 import { resolve } from 'node:path'
 import { chunkMarkdown } from '@/services/ingest/chunking.service'

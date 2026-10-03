@@ -1,11 +1,12 @@
 /**
  * Regression test for Wikipedia PDF ingestion pipeline.
- * Tests the full pipeline: sanitize → filter → chunk → searchText
+ * Tests the full pipeline: normalizeMarkdown → chunk → searchText
  */
 
 import { describe, it, expect } from 'vitest'
 import { sanitize } from '@/services/ingest/sanitize.service'
 import { filterBoilerplateSections } from '@/services/ingest/section-filter.service'
+import { normalizeMarkdown } from '@/services/ingest/markdown/normalize-markdown.service'
 import { chunkMarkdown } from '@/services/ingest/chunking.service'
 
 describe('Wikipedia PDF ingestion pipeline', () => {
@@ -52,12 +53,12 @@ Einstein married Mileva Marić in 1903. They had three children together.
 `
 
   it('processes Wikipedia-style PDF through full pipeline', () => {
-    // Step 1: Sanitize
+    // Step 1: Sanitize (verify intermediate step)
     const sanitized = sanitize(wikipediaMarkdown)
     expect(sanitized).toBeTruthy()
     expect(sanitized.length).toBeGreaterThan(0)
 
-    // Step 2: Filter boilerplate sections
+    // Step 2: Filter boilerplate sections (verify intermediate step)
     const filtered = filterBoilerplateSections(sanitized, {
       enableHeuristic: true,
     })
@@ -77,8 +78,12 @@ Einstein married Mileva Marić in 1903. They had three children together.
     expect(filtered).toContain('General relativity')
     expect(filtered).toContain('Personal life')
 
-    // Step 3: Chunk markdown
-    const chunks = chunkMarkdown(filtered)
+    // Step 3: Full normalization (matches production: sanitize → filter → flatten)
+    const normalized = normalizeMarkdown(wikipediaMarkdown)
+    expect(normalized).toBeTruthy()
+
+    // Step 4: Chunk markdown (production path)
+    const chunks = chunkMarkdown(normalized)
     expect(chunks.length).toBeGreaterThan(0)
 
     // Each chunk should have required fields
@@ -117,11 +122,9 @@ Einstein married Mileva Marić in 1903. They had three children together.
     // Exact lead paragraph from a Wikipedia PDF export of the JavaScript article
     const paragraph = `**JavaScript (JS)** \\[a] [is a programming language and](https://en.wikipedia.org/wiki/Programming_language) [core technology of the Web, alongside HTML and](https://en.wikipedia.org/wiki/World_Wide_Web) [CSS. Created by Brendan Eich in 1995,\\[6\\]](https://en.wikipedia.org/wiki/Brendan_Eich) it is [maintained by Ecma International's TC39 technical](https://en.wikipedia.org/wiki/Ecma_International) committee,\\[10]`
 
-    const sanitized = sanitize(paragraph)
-    const filtered = filterBoilerplateSections(sanitized, {
-      enableHeuristic: true,
-    })
-    const chunks = chunkMarkdown(filtered)
+    // Production path: normalizeMarkdown (sanitize → filter → flatten) → chunkMarkdown
+    const normalized = normalizeMarkdown(paragraph)
+    const chunks = chunkMarkdown(normalized)
 
     expect(chunks.length).toBe(1)
     const firstChunk = chunks[0]
@@ -151,13 +154,11 @@ Einstein married Mileva Marić in 1903. They had three children together.
 - Book 1
 - Book 2`
 
-    const sanitized = sanitize(onlyBoilerplate)
-    const filtered = filterBoilerplateSections(sanitized, {
-      enableHeuristic: true,
-    })
+    // Production path: normalizeMarkdown → chunkMarkdown
+    const normalized = normalizeMarkdown(onlyBoilerplate)
 
-    // After filtering, should be empty or near-empty
-    const chunks = chunkMarkdown(filtered)
+    // After normalization, should be empty or near-empty
+    const chunks = chunkMarkdown(normalized)
     expect(chunks.length).toBe(0)
   })
 
@@ -168,11 +169,9 @@ This is another paragraph.
 
 And a third one.`
 
-    const sanitized = sanitize(noHeadings)
-    const filtered = filterBoilerplateSections(sanitized, {
-      enableHeuristic: true,
-    })
-    const chunks = chunkMarkdown(filtered)
+    // Production path: normalizeMarkdown → chunkMarkdown
+    const normalized = normalizeMarkdown(noHeadings)
+    const chunks = chunkMarkdown(normalized)
 
     expect(chunks.length).toBeGreaterThan(0)
     for (const chunk of chunks) {

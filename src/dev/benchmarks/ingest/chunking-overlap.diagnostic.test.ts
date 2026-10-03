@@ -9,6 +9,9 @@
  *
  * This test is deterministic and uses pure functions (chunkMarkdown, chunkText)
  * with realistic synthetic text. No embeddings or real corpus needed.
+ *
+ * NOTE: Tests chunking mechanics on raw content. Does NOT represent the
+ * production pipeline (normalizeMarkdown → chunkMarkdown).
  */
 
 import { describe, it, expect } from 'vitest'
@@ -244,9 +247,11 @@ describe('H2 Diagnostic: chunking overlap analysis', () => {
     }
     console.log()
 
-    // Assertion: a significant fraction of paragraphs should exceed the 100-char budget
+    // Assertion: a meaningful fraction of paragraphs should exceed the overlap budget
+    // (with CHUNK_OVERLAP=200, fewer paragraphs exceed it than with smaller values,
+    // but overlap still benefits the paragraphs that do exceed it)
     const fraction = exceedsBudget.length / paragraphs.length
-    expect(fraction).toBeGreaterThanOrEqual(0.5) // At least 50% exceed the budget
+    expect(fraction).toBeGreaterThanOrEqual(0.3) // At least 30% exceed the budget
   })
 
   it('tests co-occurrence of anchors in same chunk', () => {

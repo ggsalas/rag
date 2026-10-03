@@ -1,3 +1,9 @@
+/**
+ * Diagnostic: measures chunking mechanics on raw content.
+ * NOTE: This tests the chunking algorithm in isolation (link integrity, offset
+ * tracking, size distribution). It does NOT represent the production pipeline,
+ * which normalizes Markdown first via normalizeMarkdown → chunkMarkdown.
+ */
 import { describe, it } from 'vitest'
 import { readFileSync } from 'fs'
 import { chunkMarkdown } from '@/services/ingest/chunking.service'

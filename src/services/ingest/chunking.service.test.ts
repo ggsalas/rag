@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest'
-import { chunkText, chunkMarkdown, extractOverlapText, type ChunkData } from './chunking.service'
+import {
+  chunkText,
+  chunkMarkdown,
+  extractOverlapText,
+  type ChunkData,
+} from './chunking.service'
 
 describe('chunking.service', () => {
   describe('chunkText', () => {
@@ -20,14 +25,20 @@ describe('chunking.service', () => {
 
     it('should split long text into multiple chunks when multiple paragraphs exist', () => {
       // Use multiple paragraphs (not one big paragraph) so chunking splits on paragraph boundaries
-      const paragraphs = Array.from({ length: 20 }, (_, i) => `Paragraph ${i}: ${'word '.repeat(20)}`)
+      const paragraphs = Array.from(
+        { length: 20 },
+        (_, i) => `Paragraph ${i}: ${'word '.repeat(20)}`,
+      )
       const text = paragraphs.join('\n\n')
       const chunks = chunkText(text, { size: 300, overlap: 50 })
       expect(chunks.length).toBeGreaterThan(1)
     })
 
     it('should not exceed size for well-separated paragraphs', () => {
-      const paragraphs = Array.from({ length: 20 }, (_, i) => `P${i}: ${'word '.repeat(10)}`)
+      const paragraphs = Array.from(
+        { length: 20 },
+        (_, i) => `P${i}: ${'word '.repeat(10)}`,
+      )
       const text = paragraphs.join('\n\n')
       const chunks = chunkText(text, { size: 300, overlap: 50 })
       // Chunks that don't contain an oversized paragraph should respect size
@@ -42,7 +53,8 @@ describe('chunking.service', () => {
 
     it('splits oversized paragraphs by sentences to respect size limit', () => {
       // A long paragraph with multiple sentences is split to respect the size limit
-      const longParagraph = 'First sentence here. Second sentence here. Third sentence here. Fourth sentence here. Fifth sentence here.'
+      const longParagraph =
+        'First sentence here. Second sentence here. Third sentence here. Fourth sentence here. Fifth sentence here.'
       const chunks = chunkText(longParagraph, { size: 100, overlap: 20 })
       // Should split into multiple chunks since the paragraph exceeds size
       expect(chunks.length).toBeGreaterThan(1)
@@ -63,7 +75,10 @@ describe('chunking.service', () => {
 
     it('should use default size and overlap from constants', () => {
       // Multiple paragraphs so chunking can split on paragraph boundaries
-      const paragraphs = Array.from({ length: 50 }, (_, i) => `P${i}: ${'word '.repeat(20)}`)
+      const paragraphs = Array.from(
+        { length: 50 },
+        (_, i) => `P${i}: ${'word '.repeat(20)}`,
+      )
       const text = paragraphs.join('\n\n')
       const chunks = chunkText(text)
       expect(chunks.length).toBeGreaterThan(1)
@@ -116,7 +131,10 @@ describe('chunking.service', () => {
 
     it('splits oversized Markdown blocks by sentences to respect size limit', () => {
       // A single long paragraph under a heading is split by sentences to respect size
-      const sentences = Array.from({ length: 20 }, (_, i) => `Sentence ${i} with some content.`)
+      const sentences = Array.from(
+        { length: 20 },
+        (_, i) => `Sentence ${i} with some content.`,
+      )
       const longParagraph = sentences.join(' ')
       const text = `## Big\n\n${longParagraph}`
       const chunks = chunkMarkdown(text, { size: 300, overlap: 50 })
@@ -131,7 +149,10 @@ describe('chunking.service', () => {
 
     it('splits sections with multiple blocks into separate chunks', () => {
       // Multiple paragraphs under a heading — each paragraph is a block
-      const paragraphs = Array.from({ length: 10 }, (_, i) => `Block ${i}: ${'word '.repeat(20)}`)
+      const paragraphs = Array.from(
+        { length: 10 },
+        (_, i) => `Block ${i}: ${'word '.repeat(20)}`,
+      )
       const text = `## Big\n\n${paragraphs.join('\n\n')}`
       const chunks = chunkMarkdown(text, { size: 300, overlap: 50 })
       expect(chunks.length).toBeGreaterThan(1)
@@ -214,7 +235,10 @@ describe('chunking.service', () => {
       // overlap window (150 chars). The paragraph is long enough to force splitting.
       // The link text is long enough (>150 chars) that the overlap cut will fall
       // inside the link, not before it.
-      const filler = 'Some filler text that goes on for a while to make this paragraph long enough. '.repeat(8)
+      const filler =
+        'Some filler text that goes on for a while to make this paragraph long enough. '.repeat(
+          8,
+        )
       const longLinkText = 'very '.repeat(40) + 'important reference'
       const link = `[${longLinkText}](https://en.wikipedia.org/wiki/Some_Article)`
       const paragraph = `${filler} And here is an ${link} near the end of the paragraph.`
@@ -241,7 +265,8 @@ describe('chunking.service', () => {
       for (let i = 1; i < chunks.length; i++) {
         const chunk = chunks[i]!
         // Check if chunk starts with `](...)` without preceding `[`
-        const startsWithBrokenLink = /^\s*\]\(/.test(chunk.text) ||
+        const startsWithBrokenLink =
+          /^\s*\]\(/.test(chunk.text) ||
           /^[^\[]*\)\s/.test(chunk.text.slice(0, 50))
         expect(startsWithBrokenLink).toBe(false)
       }
@@ -399,6 +424,101 @@ describe('chunking.service', () => {
       // searchText keeps cell content without pipes
       expect(chunks[0]!.searchText).toContain('Precision')
       expect(chunks[0]!.searchText).toContain('0.92')
+    })
+
+    it('never carries overlap across a heading boundary', () => {
+      // Overlap must stay within one section — it must never include text
+      // from a preceding section separated by a heading.
+      // Both sections have oversized content to force multiple chunks with overlap.
+      const longParagraphA = 'Sentence alpha. '.repeat(30) + 'Sentence alpha final.'
+      const longParagraphB = 'Sentence beta. '.repeat(30) + 'Sentence beta final.'
+      const text = `## Section A\n\n${longParagraphA}\n\n## Section B\n\n${longParagraphB}`
+
+      const chunks = chunkMarkdown(text, { size: 300, overlap: 150 })
+      expect(chunks.length).toBeGreaterThan(2)
+
+      // Find chunks belonging to each section
+      const sectionAChunks = chunks.filter((c) =>
+        c.sectionPath.includes('Section A'),
+      )
+      const sectionBChunks = chunks.filter((c) =>
+        c.sectionPath.includes('Section B'),
+      )
+
+      // Both sections should have multiple chunks (forcing overlap usage)
+      expect(sectionAChunks.length).toBeGreaterThan(1)
+      expect(sectionBChunks.length).toBeGreaterThan(1)
+
+      // No Section B chunk should contain text from Section A's content
+      for (const chunk of sectionBChunks) {
+        // The overlap prefix should not contain Section A's unique text
+        expect(chunk.text).not.toContain('Sentence alpha.')
+        expect(chunk.text).not.toContain('alpha final')
+      }
+
+      // No Section A chunk should contain text from Section B's content
+      for (const chunk of sectionAChunks) {
+        expect(chunk.text).not.toContain('Sentence beta.')
+        expect(chunk.text).not.toContain('beta final')
+      }
+
+      // Verify that Section B chunks DO have overlap (from within Section B)
+      const sectionBWithOverlap = sectionBChunks.filter((c) =>
+        c.text.includes('Sentence beta.'),
+      )
+      expect(sectionBWithOverlap.length).toBeGreaterThan(0)
+    })
+
+    it('works correctly on pre-normalized text (no inline markup)', () => {
+      // Simulates input from the normalize-markdown pipeline:
+      // headings preserved, inline markup already flattened
+      const normalizedText = `# Introduction
+
+This is the first paragraph about the topic.
+
+## Methods
+
+We used special techniques and tools.
+
+## Results
+
+The accuracy was 95 percent.`
+
+      const chunks = chunkMarkdown(normalizedText, { size: 500, overlap: 100 })
+      expect(chunks.length).toBe(3)
+
+      // Each chunk has correct section context
+      expect(chunks[0]!.sectionPath).toEqual(['Introduction'])
+      expect(chunks[1]!.sectionPath).toEqual(['Introduction', 'Methods'])
+      expect(chunks[2]!.sectionPath).toEqual(['Introduction', 'Results'])
+
+      // Text is plain (no Markdown syntax since input was normalized)
+      for (const chunk of chunks) {
+        expect(chunk.text).not.toContain('**')
+        expect(chunk.text).not.toContain('](')
+      }
+    })
+
+    it('sourceStart/sourceEnd are valid offsets into the input text', () => {
+      const text = `## Section
+
+First paragraph here.
+
+Second paragraph here.`
+
+      const chunks = chunkMarkdown(text, { size: 500, overlap: 100 })
+      expect(chunks.length).toBeGreaterThan(0)
+
+      for (const chunk of chunks) {
+        if (chunk.sourceStart !== undefined && chunk.sourceEnd !== undefined) {
+          expect(chunk.sourceStart).toBeGreaterThanOrEqual(0)
+          expect(chunk.sourceEnd).toBeGreaterThan(chunk.sourceStart)
+          expect(chunk.sourceEnd).toBeLessThanOrEqual(text.length)
+          // The sliced text from offsets should be contained in the chunk text
+          const sliced = text.slice(chunk.sourceStart, chunk.sourceEnd)
+          expect(chunk.text).toContain(sliced.trim().slice(0, 20))
+        }
+      }
     })
   })
 })

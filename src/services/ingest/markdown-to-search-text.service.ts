@@ -1,5 +1,10 @@
 /**
- * Converts Markdown to plain text optimized for retrieval.
+ * Converts already-normalized Markdown to plain text optimized for retrieval.
+ *
+ * Input: Markdown that has been through `normalizeMarkdown` (inline markup
+ * flattened, citations stripped, boilerplate removed). This function does NOT
+ * strip citations — that is the responsibility of `flattenInlineMarkup` in the
+ * normalization pipeline.
  *
  * Uses remark AST (not regex) to reliably extract text content:
  * - Headings: text only, no # markers
@@ -142,26 +147,6 @@ export function markdownToSearchText(markdown: string): string {
 }
 
 /**
- * Strips inline citation markers from text while preserving meaningful
- * bracketed content like [C++], [API], or [Node.js].
- *
- * Removes:
- * - Numeric citations: [1], [6], [10], [1,2,3], [1-3], [1, 2, 3]
- * - Single-letter citations: [a], [b]
- * - Escaped forms normalized by remark: \[a] / \[6\] become [a] / [6]
- *
- * Preserves:
- * - Uppercase/mixed-case brackets: [C++], [API], [Node.js]
- * - Multi-word brackets: [foo bar], [some reference]
- */
-function stripCitations(text: string): string {
-  return text
-    .replace(/\[\d[\d,\s–-]*\]/g, '') // numeric: [1], [10], [1,2,3], [1-3]
-    .replace(/\[[a-z](?:\s*,\s*[a-z])*\]/g, '') // letter: [a], [a, b]
-    .replace(/ {2,}/g, ' ') // collapse leftover double spaces
-}
-
-/**
  * Recursively extracts text from node children.
  */
 function extractTextFromChildren(
@@ -174,7 +159,7 @@ function extractTextFromChildren(
     if (child.type === 'text') {
       const text = child as Text
       if (text.value) {
-        textParts.push(stripCitations(text.value))
+        textParts.push(text.value)
       }
     } else if (child.type === 'inlineCode') {
       const code = child as InlineCode

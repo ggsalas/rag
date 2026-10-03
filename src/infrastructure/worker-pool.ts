@@ -1,5 +1,5 @@
 import { wrap, type Remote } from 'comlink'
-import type { ParserWorkerAPI } from '@/workers/parser.worker'
+import type { ParserWorkerAPI } from '@/workers/pdf-parser.worker'
 import type { EmbeddingWorkerAPI } from '@/workers/embedding.worker'
 import type { RerankerWorkerAPI } from '@/workers/reranker.worker'
 
@@ -7,11 +7,11 @@ let parserWorker: Remote<ParserWorkerAPI> | null = null
 let embeddingWorker: Remote<EmbeddingWorkerAPI> | null = null
 let rerankerWorker: Remote<RerankerWorkerAPI> | null = null
 
-/** Returns a singleton Comlink proxy for the parser worker */
+/** Returns a singleton Comlink proxy for the PDF parser worker */
 export function getParserWorker(): Remote<ParserWorkerAPI> {
   if (!parserWorker) {
     const worker = new Worker(
-      new URL('@/workers/parser.worker.ts', import.meta.url),
+      new URL('@/workers/pdf-parser.worker.ts', import.meta.url),
       { type: 'module' },
     )
     parserWorker = wrap<ParserWorkerAPI>(worker)

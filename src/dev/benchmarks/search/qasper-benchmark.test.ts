@@ -18,6 +18,7 @@ import { describe, it, beforeAll } from 'vitest'
 import { create, insert, search, type AnyOrama } from '@orama/orama'
 import { resolve } from 'node:path'
 import { readFileSync, existsSync, writeFileSync, mkdirSync } from 'node:fs'
+import { createHash } from 'node:crypto'
 import {
   QASPER_POSITIVE_CASES,
   QASPER_UNANSWERABLE_CASES,
@@ -26,6 +27,7 @@ import {
 import { relevanceVector } from './search-benchmark.relevance'
 import { ndcgAtK, hitAtKGraded, recallAtKGraded } from './search-benchmark.ndcg'
 import { chunkMarkdown, chunkText } from '@/services/ingest/chunking.service'
+import { normalizeMarkdown } from '@/services/ingest/markdown/normalize-markdown.service'
 import { ENGLISH_STOP_WORDS_ARRAY } from '@/lib/stop-words'
 import { EMBEDDING_DIMENSIONS } from '@/lib/constants'
 import type { PretrainedTokenizerOptions } from '@huggingface/transformers'
@@ -71,7 +73,9 @@ function loadMarkdownFixtures(): Array<{ content: string; documentId: string; do
 }
 
 function chunkDocument(content: string, documentId: string, documentName: string): ChunkShape[] {
-  const chunked = chunkMarkdown(content)
+  // Apply target normalization pipeline before chunking (matches production ingest)
+  const normalized = normalizeMarkdown(content)
+  const chunked = chunkMarkdown(normalized)
   return chunked.map((c, i) => ({
     chunkId: `${documentId}::${i}`,
     documentId,
@@ -95,23 +99,63 @@ async function generateEmbeddings(texts: string[]): Promise<number[][]> {
   return results
 }
 
+/**
+ * Computes a deterministic hash of chunk texts for cache validation.
+ */
+function computeChunksHash(chunks: ChunkShape[]): string {
+  const hash = createHash('sha256')
+  for (const chunk of chunks) {
+    hash.update(chunk.text)
+    hash.update(chunk.searchText)
+    hash.update(chunk.sectionPath.join('|'))
+    hash.update(chunk.headingText)
+    hash.update('|')
+  }
+  return hash.digest('hex').slice(0, 16)
+}
+
+/**
+ * Computes a deterministic hash of query texts for cache validation.
+ */
+function computeQueriesHash(queries: string[]): string {
+  const hash = createHash('sha256')
+  for (const query of queries) {
+    hash.update(query)
+    hash.update('|')
+  }
+  return hash.digest('hex').slice(0, 16)
+}
+
 async function getOrGenerateEmbeddings(chunks: ChunkShape[], cachePath: string): Promise<number[][]> {
+  const contentHash = computeChunksHash(chunks)
+
   if (existsSync(cachePath)) {
     const cached = JSON.parse(readFileSync(cachePath, 'utf-8'))
-    if (cached.length === chunks.length) return cached
+    if (cached.hash === contentHash && cached.embeddings?.length === chunks.length) {
+      return cached.embeddings
+    }
+    console.log(`  Cache stale (hash or length mismatch), regenerating`)
   }
   const texts = chunks.map((c) => buildEmbeddingText(c))
-  return generateEmbeddings(texts)
+  const embeddings = await generateEmbeddings(texts)
+  if (!existsSync(CACHE_DIR)) mkdirSync(CACHE_DIR, { recursive: true })
+  writeFileSync(cachePath, JSON.stringify({ hash: contentHash, embeddings }))
+  return embeddings
 }
 
 async function getOrGenerateQueryEmbeddings(queries: string[]): Promise<number[][]> {
+  const contentHash = computeQueriesHash(queries)
+
   if (existsSync(QUERY_EMBEDDINGS_CACHE)) {
     const cached = JSON.parse(readFileSync(QUERY_EMBEDDINGS_CACHE, 'utf-8'))
-    if (cached.length === queries.length) return cached
+    if (cached.hash === contentHash && cached.embeddings?.length === queries.length) {
+      return cached.embeddings
+    }
+    console.log(`  Query cache stale (hash or length mismatch), regenerating`)
   }
   const embeddings = await generateEmbeddings(queries)
   if (!existsSync(CACHE_DIR)) mkdirSync(CACHE_DIR, { recursive: true })
-  writeFileSync(QUERY_EMBEDDINGS_CACHE, JSON.stringify(embeddings))
+  writeFileSync(QUERY_EMBEDDINGS_CACHE, JSON.stringify({ hash: contentHash, embeddings }))
   return embeddings
 }
 
@@ -681,9 +725,8 @@ describe.skipIf(!RUN_BENCHMARK)('QASPER Multi-Document Benchmark', () => {
     // Chunk with chunkText instead of chunkMarkdown
     const plainTextChunks: ChunkShape[] = []
     for (const doc of docs) {
-      // Strip Markdown headings to simulate plain-text input
-      // In reality, .docx files go through mammoth which produces Markdown,
-      // but for this test we want to isolate the effect of sectionPath
+      // Strip Markdown headings to simulate plain-text input (.txt files)
+      // This isolates the effect of sectionPath on retrieval quality
       const plainText = doc.content
         .split('\n')
         .filter((line) => !line.match(/^#+\s/)) // Remove heading lines
@@ -826,14 +869,12 @@ describe.skipIf(!RUN_BENCHMARK)('QASPER Multi-Document Benchmark', () => {
       console.log('')
       console.log('  This confirms the hypothesis: losing section context (sectionPath) degrades retrieval.')
       console.log('  The Markdown route prepends sectionPath to embedding text, providing hierarchical context.')
-      console.log('  The plain-text route has no sectionPath, so embeddings lack this structural information.')
+      console.log('  The plain-text route (.txt files) has no sectionPath, so embeddings lack this structural information.')
       console.log('')
-      console.log('  IMPACT: .docx files go through mammoth (produces Markdown) but then chunkText is used')
-      console.log('  because isStructuredMarkdown is false for .docx in ingest.service.ts.')
-      console.log('  This means .docx files lose section context during chunking, degrading retrieval quality.')
+      console.log('  IMPACT: .txt files use chunkText instead of chunkMarkdown.')
+      console.log('  This means .txt files lose section context during chunking, degrading retrieval quality.')
       console.log('')
-      console.log('  RECOMMENDATION: Treat .docx as structured Markdown (set isStructuredMarkdown = true for .docx)')
-      console.log('  so they use chunkMarkdown and preserve section hierarchy.')
+      console.log('  NOTE: DOCX files are no longer supported. Only PDF, MD, and TXT are accepted.')
     } else if (ndcgDrop > 0.01 || hitDrop > 0.01) {
       console.log('  ⚠️  MINOR DEGRADATION DETECTED')
       console.log(`      nDCG@10 dropped by ${(ndcgDrop * 100).toFixed(1)} percentage points`)
