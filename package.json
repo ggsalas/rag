@@ -9,6 +9,8 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:cross-encoder": "CROSS_ENCODER_BENCHMARK=1 vitest run --environment node --reporter=verbose src/dev/benchmarks/search/cross-encoder-benchmark.test.ts",
+    "typecheck": "tsc -b --force",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
   },
@@ -21,7 +23,6 @@
     "dexie": "^4.4.4",
     "dexie-react-hooks": "^4.4.0",
     "lucide-react": "^1.24.0",
-    "mammoth": "^1.12.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "react-router": "^7.18.0",

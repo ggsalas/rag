@@ -4,9 +4,11 @@ import {
   LLM_MODEL_DOWNLOAD_SIZE,
   EMBEDDING_MODEL_DISPLAY_NAME,
   EMBEDDING_MODEL_DOWNLOAD_SIZE,
+  RERANKER_MODEL_DISPLAY_NAME,
+  RERANKER_MODEL_DOWNLOAD_SIZE,
 } from '@/lib/constants'
 
-type ModelKind = 'llm' | 'embedding'
+type ModelKind = 'llm' | 'embedding' | 'cross-encoder'
 
 interface ModelConfig {
   busyLabel: string
@@ -33,6 +35,14 @@ const CONFIG: Record<ModelKind, ModelConfig> = {
     size: EMBEDDING_MODEL_DOWNLOAD_SIZE,
     selectProgress: (s) => s.embeddingProgress,
     selectStatus: (s) => s.embeddingStatus,
+  },
+  'cross-encoder': {
+    busyLabel: 'Downloading cross-encoder model…',
+    doneLabel: 'Cross-encoder model ready',
+    name: RERANKER_MODEL_DISPLAY_NAME,
+    size: RERANKER_MODEL_DOWNLOAD_SIZE,
+    selectProgress: (s) => s.crossEncoderProgress,
+    selectStatus: (s) => s.crossEncoderStatus,
   },
 }
 

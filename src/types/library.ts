@@ -1,9 +1,5 @@
-import type { HybridWeights } from './search'
-
 export type SearchPreferences = {
-  hybridWeights: HybridWeights
   maxResults: number
-  minScore: number
   llmMaxTokens?: number
   isAiMode?: boolean
 }

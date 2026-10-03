@@ -12,12 +12,19 @@ export async function createDocument(
   libraryId: string,
   file: { name: string; size: number; type: string },
 ): Promise<DocumentMeta> {
+  const docType = inferDocumentType(file.type, file.name)
+  if (!docType) {
+    throw new Error(
+      `Cannot create document: unsupported file type for "${file.name}"`,
+    )
+  }
+
   const now = Date.now()
   const document: DocumentMeta = {
     id: generateId(),
     libraryId,
     name: file.name,
-    type: inferDocumentType(file.type, file.name),
+    type: docType,
     size: file.size,
     createdAt: now,
     updatedAt: now,
@@ -133,21 +140,35 @@ export async function cleanupInterruptedDocuments(): Promise<number> {
   return interruptedDocs.length
 }
 
-/** Infers document type from MIME type or file extension */
+/**
+ * Infers document type from file extension (case-insensitive).
+ * Returns null for unsupported types — callers must validate before creating
+ * a document record.
+ *
+ * Validation is extension-based. MIME type is only used as a fallback for
+ * extensionless files. Files with unsupported extensions (including DOC, DOCX,
+ * CSV, etc.) return null regardless of MIME type.
+ */
 function inferDocumentType(
   mimeType: string,
   fileName: string,
-): 'pdf' | 'docx' | 'txt' | 'md' {
-  if (mimeType === 'application/pdf' || fileName.endsWith('.pdf')) return 'pdf'
-  if (
-    mimeType ===
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
-    fileName.endsWith('.docx')
-  ) {
-    return 'docx'
+): 'pdf' | 'txt' | 'md' | null {
+  const lowerName = fileName.toLowerCase()
+
+  // Check extension first (primary validation)
+  if (lowerName.endsWith('.pdf')) return 'pdf'
+  if (lowerName.endsWith('.md') || lowerName.endsWith('.markdown')) return 'md'
+  if (lowerName.endsWith('.txt')) return 'txt'
+
+  // For extensionless files, fall back to MIME type
+  const hasExtension = lowerName.includes('.')
+  if (!hasExtension) {
+    if (mimeType === 'application/pdf') return 'pdf'
+    if (mimeType === 'text/markdown') return 'md'
+    if (mimeType === 'text/plain') return 'txt'
   }
-  if (fileName.endsWith('.md')) return 'md'
-  return 'txt'
+
+  return null
 }
 
 /** Saves the extracted text content of a document to the database */

@@ -26,6 +26,7 @@ import {
   type SearchStore,
 } from '@/hooks/useSearchStore'
 import { useSearchPreferences } from '@/hooks/useSearchPreferences'
+import { useSearchModels } from '@/hooks/useSearchModels'
 import { SearchBar } from '@/components/search/SearchBar'
 import { ResultList } from '@/components/search/ResultList'
 import { LLMAnswer } from '@/components/search/LLMAnswer'
@@ -36,6 +37,7 @@ import { toast } from 'sonner'
 
 /** Stable id so the progress toast and its success/error transition target the same toast. */
 const LLM_DOWNLOAD_TOAST_ID = 'llm-model-download'
+const CROSS_ENCODER_DOWNLOAD_TOAST_ID = 'cross-encoder-model-download'
 
 /** Creates model load callbacks for LLM service */
 function getLlmModelCallbacks(): ModelLoadCallbacks {
@@ -81,10 +83,6 @@ export const searchShouldRevalidate: ShouldRevalidateFunction = ({
 }) => currentParams.libraryId !== nextParams.libraryId
 
 export function SearchPage() {
-  // -- Pipeline overview --
-  // ?q= → submitQuery → vector search → optionally LLM streaming → idle
-  // On completion, state is saved to location.state for back-nav restoration.
-
   // -- Route state (URL + navigation history) --
   const { libraryId } = useParams<{ libraryId: string }>()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -101,8 +99,6 @@ export function SearchPage() {
   const focusedChunkId = locationState.savedSearchState?.focusedChunkId ?? null
 
   // -- Search pipeline state (page-scoped Zustand store) --
-  // Zustand's createStore (not a global singleton) gives us get() for stale-free
-  // reads in async pipelines and selective subscriptions for streaming re-renders.
   const storeRef = useRef<SearchStore | null>(null)
   if (!storeRef.current) {
     storeRef.current = createSearchStore(savedState, getLlmModelCallbacks())
@@ -115,8 +111,35 @@ export function SearchPage() {
   // -- Preferences (persisted per-library in IndexedDB) --
   const prefs = useSearchPreferences(libraryId!, searchPreferences)
 
-  // -- Global app state --
-  const embeddingStatus = useAppStore((s) => s.embeddingStatus)
+  // -- Search models: embedding + cross-encoder loaded in parallel --
+  const {
+    embeddingStatus,
+    crossEncoderStatus,
+    combinedStatus,
+    retry: retrySearchModels,
+  } = useSearchModels({
+    onLoadStart: () => {
+      // Show a progress toast for the cross-encoder only.
+      // The embedding toast is owned by App (useEmbeddingStatus) — do not show or dismiss it here.
+      if (crossEncoderStatus === 'idle' || crossEncoderStatus === 'loading') {
+        toast(<ModelDownloadToast model="cross-encoder" />, {
+          id: CROSS_ENCODER_DOWNLOAD_TOAST_ID,
+          duration: Infinity,
+        })
+      }
+    },
+    onLoadEnd: () => {
+      // Both models ready — dismiss the cross-encoder progress toast.
+      // The embedding toast stays under App/useEmbeddingStatus control.
+      toast.dismiss(CROSS_ENCODER_DOWNLOAD_TOAST_ID)
+    },
+    onLoadError: (message) => {
+      // Dismiss the cross-encoder progress toast and surface the error as a regular toast.
+      // The embedding toast stays under App/useEmbeddingStatus control.
+      toast.dismiss(CROSS_ENCODER_DOWNLOAD_TOAST_ID)
+      toast.error(`Model load failed: ${message}`)
+    },
+  })
 
   // -- Local UI state --
   const [showModelModal, setShowModelModal] = useState(false)
@@ -127,7 +150,6 @@ export function SearchPage() {
     isAiMode: prefs.isAiMode,
     hybridWeights: prefs.hybridWeights,
     maxResults: prefs.maxResults,
-    minScore: prefs.minScore,
     llmMaxTokens: prefs.llmMaxTokens,
   }
 
@@ -144,13 +166,13 @@ export function SearchPage() {
   /** Re-runs the current query with overridden pipeline options */
   const reSearchWithOverride = useCallback(
     (overrides: Partial<PipelineOptions>) => {
-      if (hasSearched && urlQuery.trim()) {
+      if (hasSearched && urlQuery.trim() && combinedStatus === 'ready') {
         store
           .getState()
           .submitQuery(urlQuery, { ...pipelineOpts, ...overrides }, onSettled)
       }
     },
-    [hasSearched, urlQuery, store, pipelineOpts, onSettled],
+    [hasSearched, urlQuery, store, pipelineOpts, onSettled, combinedStatus],
   )
 
   // -- Handlers --
@@ -158,9 +180,12 @@ export function SearchPage() {
     (query: string) => {
       const trimmed = query.trim()
       setSearchParams(trimmed ? { q: query } : {})
+      // Block submit if models aren't ready — the SearchBar is disabled too,
+      // but this is a defense-in-depth guard for programmatic calls.
+      if (combinedStatus !== 'ready') return
       store.getState().submitQuery(query, pipelineOpts, onSettled)
     },
-    [setSearchParams, store, pipelineOpts, onSettled],
+    [setSearchParams, store, pipelineOpts, onSettled, combinedStatus],
   )
 
   const setFocusedChunkId = useCallback(
@@ -184,26 +209,10 @@ export function SearchPage() {
   )
 
   // Pref changes: update local + persist to IndexedDB, re-search if active query
-  const handleSetHybridWeights = useCallback(
-    (weights: typeof prefs.hybridWeights) => {
-      prefs.setHybridWeights(weights)
-      reSearchWithOverride({ hybridWeights: weights })
-    },
-    [prefs, reSearchWithOverride],
-  )
-
   const handleSetMaxResults = useCallback(
     (n: number) => {
       prefs.setMaxResults(n)
       reSearchWithOverride({ maxResults: n })
-    },
-    [prefs, reSearchWithOverride],
-  )
-
-  const handleSetMinScore = useCallback(
-    (n: number) => {
-      prefs.setMinScore(n)
-      reSearchWithOverride({ minScore: n })
     },
     [prefs, reSearchWithOverride],
   )
@@ -231,16 +240,13 @@ export function SearchPage() {
   // -- AI toggle + model download --
   const toggleAi = useCallback(() => {
     if (prefs.isAiMode) {
-      // Turn off AI
       prefs.setIsAiMode(false)
     } else {
       const llmStatus = useAppStore.getState().llmStatus
       if (llmStatus === 'ready') {
-        // Turn on AI (model already loaded) — re-search to generate
         prefs.setIsAiMode(true)
         reSearchWithOverride({ isAiMode: true })
       } else {
-        // Need to download model first — show confirmation modal
         setShowModelModal(true)
       }
     }
@@ -264,16 +270,16 @@ export function SearchPage() {
   const cancelModelDownload = useCallback(() => setShowModelModal(false), [])
 
   // -- Effects --
-  // Bootstrap: auto-search if ?q= exists with no saved state
+  // Bootstrap: auto-search if ?q= exists with no saved state and models ready
   const bootstrappedRef = useRef(false)
   useEffect(() => {
     if (bootstrappedRef.current) return
     if (!urlQuery.trim() || savedState) return
-    if (embeddingStatus !== 'ready') return
+    if (combinedStatus !== 'ready') return
 
     bootstrappedRef.current = true
     store.getState().submitQuery(urlQuery, pipelineOpts, onSettled)
-  }, [embeddingStatus, urlQuery, savedState, store, pipelineOpts, onSettled])
+  }, [combinedStatus, urlQuery, savedState, store, pipelineOpts, onSettled])
 
   // Cleanup on unmount
   useEffect(
@@ -313,19 +319,18 @@ export function SearchPage() {
         <SearchBar
           onSearch={handleSearch}
           isSearching={isSearching}
-          embeddingStatus={embeddingStatus}
+          searchModelsStatus={combinedStatus}
+          embeddingStatusDetailed={embeddingStatus}
+          crossEncoderStatusDetailed={crossEncoderStatus}
           initialQuery={urlQuery}
-          hybridWeights={prefs.hybridWeights}
-          onWeightsChange={handleSetHybridWeights}
           maxResults={prefs.maxResults}
           onMaxResultsChange={handleSetMaxResults}
-          minScore={prefs.minScore}
-          onMinScoreChange={handleSetMinScore}
           notFocused={!!focusedChunkId}
           isAiMode={prefs.isAiMode}
           onAiModeToggle={toggleAi}
           llmMaxTokens={prefs.llmMaxTokens}
           onLlmMaxTokensChange={handleSetLlmMaxTokens}
+          onRetryModels={retrySearchModels}
         />
 
         {showLLMAnswer && (

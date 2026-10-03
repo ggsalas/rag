@@ -20,7 +20,6 @@ Users organize documents into **Libraries**. Each library is an independent coll
 | Embeddings    | @huggingface/transformers | 4.x                                             |
 | LLM (AI mode) | @mlc-ai/web-llm           | 0.x (WebGPU, main thread)                       |
 | PDF Parsing   | @llamaindex/liteparse-wasm | 2.x (PDFium-based, WASM)                       |
-| DOCX Parsing  | mammoth                   | 1.x                                             |
 | MD sanitize   | remark (unified)          | 15.x (AST-based, conservative)                 |
 | Worker Comms  | Comlink                   | 4.x                                             |
 | Testing       | Vitest                    | 4.x                                             |
@@ -160,6 +159,16 @@ Library (1)
 - Mock Web Workers in tests.
 - Use `fake-indexeddb` for Dexie tests.
 
+## Type Checking
+
+The canonical command is:
+
+```
+npm run typecheck    # → tsc -b --force
+```
+
+**Why `tsc -b` and NOT `tsc --noEmit`:** The root `tsconfig.json` is a [solution config](https://www.typescriptlang.org/docs/handbook/project-reference.html) with `{ "files": [] }` and two project references (`tsconfig.app.json`, `tsconfig.node.json`). Running `tsc --noEmit` (without `-b`) processes the root config, which has zero files, and exits 0 without checking anything. Only `tsc -b` (or `tsc --noEmit -p tsconfig.app.json`) walks the references and actually type-checks the codebase. The `typecheck` script uses `-b --force` to ensure a clean check every time.
+
 ## Code Style
 
 - TypeScript strict mode enabled.
@@ -284,3 +293,4 @@ function DocumentsPage() {
 - ❌ Do NOT add `@mlc-ai/web-llm` to Vite's `optimizeDeps.include` — keep it excluded to avoid duplicate TVM runtime instances
 - ❌ Do NOT access IndexedDB directly — use Dexie
 - ❌ Do NOT access Orama from components — go through services
+- ❌ Do NOT run `tsc --noEmit` to type-check — it checks NOTHING in this repo (root tsconfig has zero files). Use `npm run typecheck` (`tsc -b --force`) instead.

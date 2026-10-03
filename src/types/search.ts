@@ -12,9 +12,23 @@ export type SearchResult = {
   chunkId: string
   documentId: string
   documentName: string
+  /** Sanitized Markdown text for display */
   text: string
+  /** Plain text used for retrieval */
+  searchText: string
+  /** Heading hierarchy path */
+  sectionPath: string[]
+  /** Immediate parent heading */
+  headingText: string
+  /** Original Orama hybrid score (BM25 + vector). Used for display and thresholds. */
   score: number
   chunkIndex: number
+  /**
+   * Optional post-retrieval rerank score (lexical/metadata boost on top of `score`).
+   * Present only when the search pipeline applied reranking. Never to be confused
+   * with Orama confidence — it is a deterministic reordering signal.
+   */
+  rerankScore?: number
 }
 
 import type { LLMCitation } from '@/services/llm/llm.service'
@@ -36,7 +50,6 @@ export type PipelineOptions = {
   isAiMode: boolean
   hybridWeights: HybridWeights
   maxResults: number
-  minScore: number
   llmMaxTokens: number
 }
 

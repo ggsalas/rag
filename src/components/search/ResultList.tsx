@@ -135,10 +135,11 @@ export function ResultList({
       <p className="text-sm text-muted-foreground">
         {results.length} {results.length === 1 ? 'chunk' : 'chunks'} found
       </p>
-      {results.map((result) => (
+      {results.map((result, index) => (
         <ResultCard
           key={result.chunkId}
           result={result}
+          resultNumber={index + 1}
           isFocused={result.chunkId === focusedChunkId}
           savedSearchState={savedSearchState}
           llmCitationIndex={

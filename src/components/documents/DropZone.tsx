@@ -2,14 +2,11 @@ import { useState, useCallback, useRef, type DragEvent } from 'react'
 import { CloudUpload } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 
-const ACCEPTED_TYPES = [
-  'application/pdf',
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-  'text/plain',
-  'text/markdown',
-]
-
-const ACCEPTED_EXTENSIONS = ['.pdf', '.docx', '.txt', '.md']
+/**
+ * Supported file extensions (case-insensitive).
+ * Files must have one of these extensions to be accepted.
+ */
+const ACCEPTED_EXTENSIONS = ['.pdf', '.txt', '.md', '.markdown']
 
 interface DropZoneProps {
   onFiles: (files: File[]) => void
@@ -17,15 +14,21 @@ interface DropZoneProps {
   className?: string
 }
 
-export function DropZone({ onFiles, disabled = false, className }: DropZoneProps) {
+export function DropZone({
+  onFiles,
+  disabled = false,
+  className,
+}: DropZoneProps) {
   const [isDragOver, setIsDragOver] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
+  /**
+   * Validates file by extension only. Files with unsupported extensions
+   * (including DOC, DOCX, CSV, etc.) are rejected regardless of MIME type.
+   */
   const isValidFile = (file: File): boolean => {
-    if (ACCEPTED_TYPES.includes(file.type)) return true
-    return ACCEPTED_EXTENSIONS.some((ext) =>
-      file.name.toLowerCase().endsWith(ext),
-    )
+    const name = file.name.toLowerCase()
+    return ACCEPTED_EXTENSIONS.some((ext) => name.endsWith(ext))
   }
 
   const handleFiles = useCallback(
@@ -84,7 +87,7 @@ export function DropZone({ onFiles, disabled = false, className }: DropZoneProps
         {isDragOver ? 'Drop files here' : 'Drag & drop documents here'}
       </p>
       <p className="text-sm text-muted-foreground mb-4">
-        or click to browse — PDF, DOCX, TXT, MD
+        or click to browse — PDF, TXT, MD
       </p>
       <Button
         variant="primary"

@@ -2,7 +2,6 @@ import { useState, useCallback, useRef } from 'react'
 import * as libraryService from '@/services/library.service'
 import {
   DEFAULT_MAX_RESULTS,
-  DEFAULT_MIN_SCORE,
   DEFAULT_HYBRID_WEIGHTS,
   LLM_MAX_TOKENS,
 } from '@/lib/constants'
@@ -10,12 +9,10 @@ import type { HybridWeights } from '@/types/search'
 import type { SearchPreferences } from '@/types/library'
 
 export interface SearchPreferencesAPI {
+  /** Fixed hybrid weights — always DEFAULT_HYBRID_WEIGHTS (no user toggle). */
   hybridWeights: HybridWeights
-  setHybridWeights: (weights: HybridWeights) => void
   maxResults: number
   setMaxResults: (n: number) => void
-  minScore: number
-  setMinScore: (n: number) => void
   llmMaxTokens: number
   setLlmMaxTokens: (n: number) => void
   isAiMode: boolean
@@ -26,19 +23,21 @@ export interface SearchPreferencesAPI {
  * Manages search preferences for a library.
  * Seeded from the route loader (no post-mount fetch).
  * Each setter updates local state immediately and persists to IndexedDB fire-and-forget.
+ *
+ * Migration: legacy `searchPreset`, `hybridWeights`, and `minScore` fields in
+ * persisted SearchPreferences are silently ignored. The hybrid weights are now
+ * a fixed application constant (DEFAULT_HYBRID_WEIGHTS) and are NEVER persisted —
+ * storing them would reintroduce the exact problem we eliminated: a persisted
+ * value that survives future constant changes and anchors the user to a stale
+ * setting. On the next persist of any preference, the stale fields are
+ * naturally dropped from IndexedDB.
  */
 export function useSearchPreferences(
   libraryId: string,
   initialPrefs?: SearchPreferences | null,
 ): SearchPreferencesAPI {
-  const [hybridWeights, setHybridWeightsState] = useState<HybridWeights>(
-    initialPrefs?.hybridWeights ?? DEFAULT_HYBRID_WEIGHTS,
-  )
   const [maxResults, setMaxResultsState] = useState(
     initialPrefs?.maxResults ?? DEFAULT_MAX_RESULTS,
-  )
-  const [minScore, setMinScoreState] = useState(
-    initialPrefs?.minScore ?? DEFAULT_MIN_SCORE,
   )
   const [llmMaxTokens, setLlmMaxTokensState] = useState(
     initialPrefs?.llmMaxTokens ?? LLM_MAX_TOKENS,
@@ -47,9 +46,20 @@ export function useSearchPreferences(
     initialPrefs?.isAiMode ?? false,
   )
 
-  // Always-current snapshot of all prefs for building the full object on persist
-  const prefsRef = useRef({ hybridWeights, maxResults, minScore, llmMaxTokens, isAiMode })
-  prefsRef.current = { hybridWeights, maxResults, minScore, llmMaxTokens, isAiMode }
+  // Fixed hybrid weights — no longer user-configurable, never persisted
+  const hybridWeights = DEFAULT_HYBRID_WEIGHTS
+
+  // Always-current snapshot of persisted prefs (hybridWeights excluded)
+  const prefsRef = useRef({
+    maxResults,
+    llmMaxTokens,
+    isAiMode,
+  })
+  prefsRef.current = {
+    maxResults,
+    llmMaxTokens,
+    isAiMode,
+  }
 
   const persist = useCallback(
     (partial: Partial<SearchPreferences>) => {
@@ -61,26 +71,10 @@ export function useSearchPreferences(
     [libraryId],
   )
 
-  const setHybridWeights = useCallback(
-    (weights: HybridWeights) => {
-      setHybridWeightsState(weights)
-      persist({ hybridWeights: weights })
-    },
-    [persist],
-  )
-
   const setMaxResults = useCallback(
     (n: number) => {
       setMaxResultsState(n)
       persist({ maxResults: n })
-    },
-    [persist],
-  )
-
-  const setMinScore = useCallback(
-    (n: number) => {
-      setMinScoreState(n)
-      persist({ minScore: n })
     },
     [persist],
   )
@@ -103,11 +97,8 @@ export function useSearchPreferences(
 
   return {
     hybridWeights,
-    setHybridWeights,
     maxResults,
     setMaxResults,
-    minScore,
-    setMinScore,
     llmMaxTokens,
     setLlmMaxTokens,
     isAiMode,

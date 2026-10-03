@@ -1,60 +1,49 @@
-import {
-  useState,
-  useRef,
-  useEffect,
-  type FormEvent,
-  type ChangeEvent,
-} from 'react'
+import { useState, useRef, useEffect, type FormEvent } from 'react'
 import { X, Sparkles } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import type { ModelStatus } from '@/store/app.store'
-import type { HybridWeights } from '@/types/search'
+import type { SearchModelsStatus } from '@/hooks/useSearchModels'
 
 interface SearchBarProps {
   onSearch: (query: string) => void
   isSearching: boolean
-  embeddingStatus: ModelStatus
+  /** Combined status of embedding + cross-encoder models. Search is blocked unless `ready`. */
+  searchModelsStatus: SearchModelsStatus
+  /** Per-model statuses for granular progress messages. */
+  embeddingStatusDetailed: ModelStatus
+  crossEncoderStatusDetailed: ModelStatus
   initialQuery?: string
-  hybridWeights?: HybridWeights
-  onWeightsChange?: (weights: HybridWeights) => void
   maxResults?: number
   onMaxResultsChange?: (n: number) => void
-  minScore?: number
-  onMinScoreChange?: (n: number) => void
   notFocused?: boolean
   isAiMode?: boolean
   onAiModeToggle?: () => void
   llmMaxTokens?: number
   onLlmMaxTokensChange?: (n: number) => void
+  onRetryModels?: () => void
 }
 
 export function SearchBar({
   onSearch,
-  embeddingStatus,
+  searchModelsStatus,
+  embeddingStatusDetailed,
+  crossEncoderStatusDetailed,
   initialQuery = '',
-  hybridWeights,
-  onWeightsChange,
   maxResults,
   onMaxResultsChange,
-  minScore,
-  onMinScoreChange,
   notFocused,
   isAiMode = false,
   onAiModeToggle,
   llmMaxTokens,
   onLlmMaxTokensChange,
+  onRetryModels,
 }: SearchBarProps) {
   const [inputValue, setInputValue] = useState(initialQuery)
-  const [localWeight, setLocalWeight] = useState(hybridWeights?.vector ?? 0.5)
   const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     if (!notFocused) inputRef.current?.focus({ preventScroll: true })
   }, [notFocused])
-
-  useEffect(() => {
-    if (hybridWeights !== undefined) setLocalWeight(hybridWeights.vector)
-  }, [hybridWeights?.vector])
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault()
@@ -68,22 +57,9 @@ export function SearchBar({
     inputRef.current?.focus()
   }
 
-  const handleSliderChange = (e: ChangeEvent<HTMLInputElement>) => {
-    setLocalWeight(parseFloat(e.target.value))
-  }
-
-  const handleSliderRelease = () => {
-    onWeightsChange?.({ vector: localWeight, text: 1 - localWeight })
-  }
-
-  const isDisabled = embeddingStatus !== 'ready'
+  const isDisabled = searchModelsStatus !== 'ready'
   const hasText = inputValue.trim().length > 0
-  const showWeights =
-    hybridWeights !== undefined && onWeightsChange !== undefined
-  const showConfig =
-    showWeights ||
-    (maxResults !== undefined && minScore !== undefined) ||
-    !!onAiModeToggle
+  const showConfig = maxResults !== undefined || !!onAiModeToggle
 
   return (
     <div>
@@ -115,7 +91,7 @@ export function SearchBar({
               onChange={(e) => setInputValue(e.target.value)}
               placeholder={
                 isDisabled
-                  ? 'Waiting for embedding model to load...'
+                  ? 'Waiting for search models to load...'
                   : 'Search your documents...'
               }
               disabled={isDisabled}
@@ -186,32 +162,8 @@ export function SearchBar({
                       </>
                     )}
 
-                    {showWeights && (
-                      <>
-                        <span className="text-xs text-muted-foreground whitespace-nowrap">
-                          Keyword
-                        </span>
-                        <input
-                          type="range"
-                          min="0"
-                          max="1"
-                          step="0.1"
-                          value={localWeight}
-                          onChange={handleSliderChange}
-                          onMouseUp={handleSliderRelease}
-                          onTouchEnd={handleSliderRelease}
-                          disabled={isDisabled}
-                          className="flex-1 min-w-20 h-1.5 accent-primary cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                        />
-                        <span className="text-xs text-muted-foreground whitespace-nowrap">
-                          Semantic
-                        </span>
-                      </>
-                    )}
-
                     {maxResults !== undefined && onMaxResultsChange && (
                       <>
-                        <div className="w-px h-4 bg-border mx-1" />
                         <span className="text-xs text-muted-foreground whitespace-nowrap">
                           Max results
                         </span>
@@ -230,32 +182,6 @@ export function SearchBar({
                         />
                       </>
                     )}
-
-                    {minScore !== undefined && onMinScoreChange && (
-                      <>
-                        <div className="w-px h-4 bg-border mx-1" />
-                        <span className="text-xs text-muted-foreground whitespace-nowrap">
-                          Min score
-                        </span>
-                        <input
-                          type="number"
-                          min="0"
-                          max="100"
-                          value={minScore}
-                          onChange={(e) =>
-                            onMinScoreChange(
-                              Math.min(
-                                100,
-                                Math.max(0, parseInt(e.target.value) || 0),
-                              ),
-                            )
-                          }
-                          disabled={isDisabled}
-                          className="w-12 text-xs text-center border border-border rounded px-1 py-0.5 outline-none focus:border-ring disabled:opacity-50 text-foreground"
-                        />
-                        <span className="text-xs text-muted-foreground">%</span>
-                      </>
-                    )}
                   </div>
                 </div>
               </div>
@@ -264,16 +190,27 @@ export function SearchBar({
         </div>
       </div>
 
-      {embeddingStatus === 'loading' && (
-        <p className="mt-2 text-sm text-muted-foreground">
-          Loading embedding model... Search will be available once the model is
-          ready.
-        </p>
-      )}
-      {embeddingStatus === 'error' && (
-        <p className="mt-2 text-sm text-foreground">
-          Embedding model failed to load. Search is unavailable.
-        </p>
+      {searchModelsStatus === 'error' && (
+        <div className="mt-2 space-y-1">
+          <p className="text-sm text-foreground">
+            Search is unavailable — one or more models failed to load.
+          </p>
+          {embeddingStatusDetailed === 'error' && (
+            <p className="text-xs text-foreground">• Embedding model failed.</p>
+          )}
+          {crossEncoderStatusDetailed === 'error' && (
+            <p className="text-xs text-foreground">• Cross-encoder model failed.</p>
+          )}
+          {onRetryModels && (
+            <button
+              type="button"
+              onClick={onRetryModels}
+              className="mt-1 text-sm text-primary underline hover:text-primary-hover"
+            >
+              Retry loading models
+            </button>
+          )}
+        </div>
       )}
     </div>
   )

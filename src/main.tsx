@@ -6,6 +6,11 @@ import './index.css'
 
 syncFaviconWithColorScheme()
 
+// Dev-only diagnostic tools (exposes window.__rag for browser console)
+if (import.meta.env.DEV) {
+  import('./dev-tools').then((mod) => mod.registerDevTools())
+}
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <App />

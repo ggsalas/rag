@@ -39,14 +39,17 @@ const VERBATIM_NODE_TYPES = new Set([
 const INVISIBLE_CHARS_RE = /[​‌‍﻿]/g
 
 /**
- * Pre-parse string normalization:
+ * Normalizes Unicode in a text node value:
  * - NFKC to fold Unicode compatibility variants (ligatures like `ﬁ` → `fi`,
  *   full-width digits → half-width, etc.)
  * - Strip zero-width joiners / BOM
  * - Convert NBSP to a regular space so word boundaries tokenize normally
+ *
+ * Applied only to non-verbatim `text` nodes so code blocks, inline code,
+ * HTML, and frontmatter remain untouched.
  */
-function normalizeUnicode(text: string): string {
-  return text
+function normalizeTextValue(value: string): string {
+  return value
     .normalize('NFKC')
     .replace(INVISIBLE_CHARS_RE, '')
     .replace(/ /g, ' ')
@@ -59,14 +62,15 @@ function normalizeUnicode(text: string): string {
  */
 const sanitizePlugin: Plugin<[], Root> = () => {
   return (tree) => {
-    // Visitor A — collapse whitespace inside text nodes, respecting verbatim contexts.
+    // Visitor A — normalize Unicode + collapse whitespace inside text nodes,
+    // respecting verbatim contexts (code blocks, inline code, HTML, etc.).
     visit(tree, 'text', (node: Text, _index, parent) => {
       if (parent && VERBATIM_NODE_TYPES.has(parent.type)) return SKIP
-      const collapsed = node.value
+      const normalized = normalizeTextValue(node.value)
         .replace(/[ \t]+/g, ' ')
         .replace(/ *\n */g, '\n')
         .replace(/\n{3,}/g, '\n\n')
-      if (collapsed !== node.value) node.value = collapsed
+      if (normalized !== node.value) node.value = normalized
       return undefined
     })
 
@@ -111,11 +115,13 @@ const processor = unified()
 
 /**
  * Conservative sanitize: normalizes Unicode + whitespace without altering
- * document structure. Idempotent.
+ * document structure. Idempotent. Verbatim content (code blocks, inline code,
+ * HTML, frontmatter) is preserved untouched.
  */
 export function sanitize(text: string): string {
   if (!text) return text
-  const normalized = normalizeUnicode(text)
-  const out = String(processor.processSync(normalized))
+  // Unicode normalization is applied in the visitor to non-verbatim text nodes,
+  // so code blocks and inline code retain their original content.
+  const out = String(processor.processSync(text))
   return out.trim()
 }

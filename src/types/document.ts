@@ -6,11 +6,23 @@ export type DocumentStatus =
   | 'indexed'
   | 'error'
 
+/**
+ * Source file type. DOC/DOCX are rejected at upload validation.
+ */
+export type DocumentType = 'pdf' | 'txt' | 'md'
+
+/**
+ * Canonical downstream format after source adaptation.
+ * - `markdown`: simplified Markdown (heading markers + plain body)
+ * - `text`: literal plain text, never parsed as Markdown
+ */
+export type ContentFormat = 'markdown' | 'text'
+
 export type DocumentMeta = {
   id: string
   libraryId: string
   name: string
-  type: 'pdf' | 'docx' | 'txt' | 'md'
+  type: DocumentType
   size: number
   createdAt: number
   updatedAt: number
@@ -26,8 +38,30 @@ export type Chunk = {
   documentId: string
   documentName: string
   chunkIndex: number
+  /** Sanitized Markdown text for display and highlighting */
   text: string
+  /** Plain text representation for retrieval (no Markdown syntax) */
+  searchText: string
+  /** Heading hierarchy path (e.g. ["Introduction", "Methods"]) */
+  sectionPath: string[]
+  /** Immediate parent heading text */
+  headingText: string
   embedding: number[]
+  /**
+   * Start offset of chunk's content proper in the original document text.
+   * Excludes the overlap prefix (overlap is shared with previous chunk).
+   * For multi-block chunks, this is the start of the first content block.
+   * Undefined for plain-text chunking (chunkText) which has no AST positions.
+   */
+  sourceStart?: number
+  /**
+   * End offset of chunk's content proper in the original document text.
+   * Excludes the overlap prefix. For multi-block chunks, this is the end of
+   * the last content block. The range [sourceStart, sourceEnd] may include
+   * inter-block whitespace that differs from the chunk's text.
+   * Undefined for plain-text chunking (chunkText).
+   */
+  sourceEnd?: number
 }
 
 export type DocumentContent = {

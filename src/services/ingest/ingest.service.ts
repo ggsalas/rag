@@ -1,7 +1,13 @@
 import { generateId } from '@/lib/utils'
-import { parseFile } from './parser.service'
-import { chunkText, chunkMarkdown } from './chunking.service'
-import { sanitize } from './sanitize.service'
+import {
+  parseFile,
+  isSupportedFile,
+  UnsupportedFileTypeError,
+} from './source/parse-file.service'
+import { chunkMarkdown } from './chunking.service'
+import { chunkPlainText } from './text/text-chunker.service'
+import { normalizeMarkdown } from './markdown/normalize-markdown.service'
+import { normalizeText } from './text/normalize-text.service'
 import { embedBatch } from '@/services/embedding/embedding.service'
 import { insertChunks } from '@/services/embedding/vector-store'
 import { db } from '@/infrastructure/db'
@@ -42,9 +48,18 @@ async function updateProgress(
 }
 
 /**
- * Processes a document through the complete ingestion pipeline:
- * parsing → chunking → embedding → indexing.
- * Updates status and progress at each stage.
+ * Processes a document through the complete ingestion pipeline.
+ *
+ * Flow:
+ *   1. Parse source file → ParsedContent (format: 'markdown' | 'text')
+ *   2. Normalize through the format-specific route:
+ *      - markdown: sanitize → filter → flatten inline markup
+ *      - text: whitespace normalization only
+ *   3. Save normalized body to documentContents
+ *   4. Chunk with format-specific chunker
+ *   5. Embed → persist → index
+ *
+ * Status/progress/error handling wraps the whole pipeline.
  */
 async function processDocument(
   docMeta: DocumentMeta,
@@ -62,27 +77,27 @@ async function processDocument(
       )
     })
 
-    // Sanitize before chunking to strip nav chrome, escape sequences, orphan URLs, etc.
-    const cleanText = sanitize(parseResult.text)
-
-    await saveDocumentContent({
-      documentId: docMeta.id,
-      libraryId,
-      text: cleanText,
-    })
-
     await updateDocumentStatus(docMeta.id, 'chunking')
     await updateProgress(docMeta.id, PROGRESS.CHUNKING[0])
 
-    // PDFs return structured markdown from LiteParse, so they take the same
-    // markdown path as native .md files. Plain-text formats use paragraph chunking.
-    const isStructuredMarkdown =
-      docMeta.type === 'pdf' ||
-      docMeta.name.endsWith('.md') ||
-      docMeta.name.endsWith('.markdown')
-    const chunkDataList = isStructuredMarkdown
-      ? chunkMarkdown(cleanText)
-      : chunkText(cleanText)
+    // Normalize through the format-specific route
+    const normalizedBody =
+      parseResult.format === 'markdown'
+        ? normalizeMarkdown(parseResult.text)
+        : normalizeText(parseResult.text)
+
+    // Save the normalized body as the document content (viewer shows this)
+    await saveDocumentContent({
+      documentId: docMeta.id,
+      libraryId,
+      text: normalizedBody,
+    })
+
+    // Chunk with format-specific chunker
+    const chunkDataList =
+      parseResult.format === 'markdown'
+        ? chunkMarkdown(normalizedBody)
+        : chunkPlainText(normalizedBody)
 
     if (chunkDataList.length === 0) {
       throw new Error('No text could be extracted from document')
@@ -91,7 +106,8 @@ async function processDocument(
     await updateDocumentStatus(docMeta.id, 'embedding')
     await updateProgress(docMeta.id, PROGRESS.EMBEDDING[0])
 
-    const texts = chunkDataList.map((c) => c.text)
+    // Build embedding text from section context + searchText
+    const texts = chunkDataList.map((c) => buildEmbeddingText(c))
     const embeddings = await embedBatch(texts, async (current, total) => {
       await updateProgress(
         docMeta.id,
@@ -106,6 +122,11 @@ async function processDocument(
       documentName: docMeta.name,
       chunkIndex: data.chunkIndex,
       text: data.text,
+      searchText: data.searchText,
+      sectionPath: data.sectionPath,
+      headingText: data.headingText,
+      sourceStart: data.sourceStart,
+      sourceEnd: data.sourceEnd,
       embedding: embeddings[i]!,
     }))
 
@@ -140,12 +161,20 @@ async function processDocument(
 
 /**
  * Ingests multiple files into a library.
- * Creates document records and queues them for concurrent processing.
+ * Validates file types before creating document records.
+ * Throws UnsupportedFileTypeError if any file is unsupported.
  */
 export async function ingestDocuments(
   files: File[],
   libraryId: string,
 ): Promise<void> {
+  // Validate all files before creating any document records
+  const unsupported = files.filter((file) => !isSupportedFile(file))
+  if (unsupported.length > 0) {
+    const names = unsupported.map((f) => f.name).join(', ')
+    throw new UnsupportedFileTypeError(names)
+  }
+
   const docMetas = await Promise.all(
     files.map((file) =>
       createDocument(libraryId, {
@@ -161,4 +190,26 @@ export async function ingestDocuments(
   }
 
   await waitForQueue()
+}
+
+/**
+ * Builds the text to embed for a chunk.
+ * Combines section context (heading path) with searchText for better semantic retrieval.
+ */
+function buildEmbeddingText(chunk: {
+  searchText: string
+  sectionPath: string[]
+  headingText: string
+}): string {
+  const parts: string[] = []
+
+  // Add section context (heading hierarchy)
+  if (chunk.sectionPath.length > 0) {
+    parts.push(chunk.sectionPath.join(' > '))
+  }
+
+  // Add the plain text content
+  parts.push(chunk.searchText)
+
+  return parts.join('\n')
 }

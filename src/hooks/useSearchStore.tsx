@@ -1,5 +1,8 @@
 import { createStore, type StoreApi } from 'zustand/vanilla'
-import { search as searchService } from '@/services/search/search.service'
+import {
+  search as searchService,
+  SearchModelNotReadyError,
+} from '@/services/search/search.service'
 import {
   generateAnswer,
   abortLLMGeneration,
@@ -170,7 +173,6 @@ async function runSearchPipeline(
       opts.libraryId,
       opts.maxResults,
       opts.hybridWeights,
-      opts.minScore,
     )
     if (ctrl.signal.aborted) return
 
@@ -226,10 +228,15 @@ async function runSearchPipeline(
     if (ctrl.signal.aborted) return
     const message = err instanceof Error ? err.message : 'Search failed'
     const currentStatus = get().status
-    if (currentStatus === 'generating') {
-      set({ status: 'idle', llmError: message })
-    } else {
+    // SearchModelNotReadyError is a search-stage failure (models not loaded),
+    // not an LLM generation failure — surface it as a search error so the UI
+    // shows the retry button instead of a broken AI-answer card.
+    const isSearchStageError =
+      err instanceof SearchModelNotReadyError || currentStatus === 'searching'
+    if (isSearchStageError) {
       set({ status: 'idle', error: message, hasSearched: true })
+    } else {
+      set({ status: 'idle', llmError: message })
     }
   }
 }

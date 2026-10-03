@@ -48,3 +48,7 @@ coverage
 dev-dist
 sw.js
 workbox-*.js
+
+# Generated dev benchmark caches (reproducible artifacts, not tracked)
+src/dev/fixtures/.embedding-cache/
+src/dev/fixtures/.qasper-cache/
