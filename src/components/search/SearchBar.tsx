@@ -7,8 +7,6 @@ import type { SearchModelsStatus } from '@/hooks/useSearchModels'
 interface SearchBarProps {
   onSearch: (query: string) => void
   isSearching: boolean
-  /** @deprecated Use `searchModelsStatus` instead. Retained for backward compat during transition. */
-  embeddingStatus?: ModelStatus
   /** Combined status of embedding + cross-encoder models. Search is blocked unless `ready`. */
   searchModelsStatus: SearchModelsStatus
   /** Per-model statuses for granular progress messages. */

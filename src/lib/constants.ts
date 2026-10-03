@@ -3,234 +3,178 @@ import type { HybridWeights } from '@/types/search'
 /**
  * Maximum characters per chunk (Markdown text).
  *
- * all-MiniLM-L6-v2 truncates at 256 tokens (~4 chars/token ≈ 1024 chars).
- * buildEmbeddingText() prepends sectionPath (~50–100 chars), so the chunk's
- * searchText must leave room. 900 chars of Markdown typically yields ~700–800
- * chars of searchText; with a ~100-char sectionPath prefix the total embedding
- * text is ~800–900 chars ≈ 200–225 tokens, safely under the 256-token limit.
+ * all-MiniLM-L6-v2 truncates at 256 tokens (~4 chars/token ≈ 1024 chars), and
+ * buildEmbeddingText() prepends the sectionPath (~50–100 chars). 900 chars of
+ * Markdown yield ~700–800 chars of searchText, so the final embedding text is
+ * ~800–900 chars ≈ 200–225 tokens — inside the 256-token limit.
  */
 export const CHUNK_SIZE = 900
 /**
- * Characters of overlap between consecutive chunks.
+ * Overlap between consecutive chunks, in characters, cut at sentence
+ * boundaries (~50 tokens).
  *
- * 200 chars ≈ 50 tokens — carries sentence-level context across chunk
- * boundaries and increases the probability that key fragments appear in
- * multiple chunks, improving Hit@10 when normalization shifts chunk boundaries.
- * Still safely under MiniLM's 256-token limit (900 chars + 200 overlap ≈ 275
- * tokens worst case, but overlap is shared so effective embedding text stays
- * under 256 tokens). Overlap is measured in characters and split at sentence
- * boundaries.
+ * Carries sentence-level context across boundaries and lets key fragments land
+ * in more than one chunk, which protects Hit@10 when normalization shifts
+ * chunk boundaries.
  */
 export const CHUNK_OVERLAP = 200
 /**
  * Default number of search results returned to the user.
  *
- * Aligned with LLM_CONTEXT_CHUNKS (10) so that in AI mode the LLM receives
- * the full result list without the dead `results.slice(0, 10)` in
- * llm.service.ts being a no-op. Previously DEFAULT_MAX_RESULTS was 6, which
- * meant the LLM slice never actually truncated anything — the two constants
- * were silently decoupled.
+ * Matches LLM_CONTEXT_CHUNKS so AI mode passes the whole result list to the LLM.
  */
 export const DEFAULT_MAX_RESULTS = 10
 /**
- * DEPRECATED — no longer used as a gate.
+ * DEPRECATED — not used by the live search pipeline.
  *
  * Orama's hybrid score is relative (min-max normalized within the result set),
- * so the top result always has score ≈ 1.0. Applying a relative threshold of
- * 75% of top was effectively filtering out results below 0.75, which destroyed
- * relevant chunks that happened to have lower relative scores. The cross-encoder
- * reranker now provides absolute logits for abstention; this constant is kept
- * only for backward compatibility with persisted search preferences and the
- * legacy rerank/rrf/fused services. New code should use RERANKER_ABSTENTION_THRESHOLD.
+ * so the top result always scores ≈ 1.0. Gating at 75% of top therefore drops
+ * relevant chunks that simply score lower than the leader. Abstention now uses
+ * the cross-encoder's absolute logits (RERANKER_ABSTENTION_THRESHOLD). Kept
+ * because the benchmark pipeline replica still compares against it.
  */
 export const DEFAULT_MIN_SCORE = 75
 /**
- * Fixed hybrid search weights (BM25 / vector).
+ * Fixed hybrid search weights (BM25 `text` / `vector`).
  *
- * Validated on ground-truth benchmark (14 queries, 166 chunks):
+ * Ground-truth benchmark (14 queries, 166 chunks), text/vector → nDCG@10 |
+ * Hit@10 | Recall@50:
  *
- *   text/vector | nDCG@10 | Hit@10 | Recall@50
- *   -------------------------------------------
- *   0.75/0.25   | 0.3405  | 0.571  | 0.910
- *   0.50/0.50   | 0.4156  | 0.714  | 0.946
- *   0.25/0.75   | 0.4565  | 0.786  | 0.969   ← optimal
- *   0.10/0.90   | 0.4183  | 0.643  | 0.939
+ *   0.75/0.25 → 0.3405 | 0.571 | 0.910
+ *   0.50/0.50 → 0.4156 | 0.714 | 0.946
+ *   0.25/0.75 → 0.4565 | 0.786 | 0.969   ← optimal
+ *   0.10/0.90 → 0.4183 | 0.643 | 0.939
  *
- * The 0.25/0.75 split is optimal for both nDCG@10 and Recall@50, making it
- * a stable choice. The previous presets ("balanced" 0.5/0.5 and "semantic"
- * 0.1/0.9) are strictly dominated on all measured metrics.
+ * 0.25/0.75 wins on every metric; the former presets (0.5/0.5, 0.1/0.9) are
+ * strictly dominated.
  *
- * CAVEAT — Orama truthiness bug: in Orama's search-hybrid.js the check is
- *   `hybridWeights && hybridWeights.text && hybridWeights.vector`
- * If either component is 0, Orama silently discards the weights and falls
- * back to 0.5/0.5. Never pass a weight of 0 — it does NOT produce pure
- * text-only or vector-only search.
+ * CAVEAT — Orama truthiness bug: search-hybrid.js validates weights with
+ * `hybridWeights && hybridWeights.text && hybridWeights.vector`, so a component
+ * of 0 makes Orama silently discard the pair and fall back to 0.5/0.5. Never
+ * pass 0 — it does NOT give text-only or vector-only search.
  */
 export const DEFAULT_HYBRID_WEIGHTS: HybridWeights = { text: 0.25, vector: 0.75 }
 /**
- * Minimum absolute hybrid score a result must reach to be returned.
- * Prevents surfacing the "best of irrelevant" when all matches are poor.
- * Applied in addition to the user-configurable relative minScore threshold.
+ * Minimum absolute Orama hybrid score a result must reach to be kept — guards
+ * against returning the "best of an irrelevant set" when all matches are weak.
+ * Benchmark-only today: search.service.ts relies on cross-encoder logits for
+ * abstention instead. See also DEFAULT_MIN_SCORE.
  */
 export const MIN_ABSOLUTE_SCORE = 0.5
 /**
- * Query-level lexical abstention threshold (0..1).
+ * Query-level lexical abstention threshold (0..1) against
+ * `computeLexicalCoverage(query, result.searchText)`.
  *
- * After score filtering and truncation, if **none** of the returned results has
- * `computeLexicalCoverage(trimmedQuery, result.searchText) >= MIN_QUERY_LEXICAL_COVERAGE`,
- * the entire result list is replaced with `[]` (abstain on the whole query).
- * If at least one result qualifies, the full ordered list is preserved
- * (including lower-coverage results that may still provide useful context).
+ * Semantics: if NO returned result reaches the threshold, the whole list is
+ * dropped (`[]`). If at least one does, the full ordered list is kept —
+ * including lower-coverage chunks that may still provide context. It is a
+ * query-level gate, never a per-result filter.
  *
- * This is a **query-level** gate, not a per-result filter. Validated on the
- * benchmark: threshold 0.5 preserved positive Hit/Recall/MRR exactly while
- * reducing FPR from 100% to 0% for vector-heavy k6/k10/k20.
+ * Benchmark: 0.5 kept Hit/Recall/MRR on positives unchanged while dropping the
+ * false positive rate from 100% to 0% on vector-heavy k6/k10/k20.
+ * Benchmark-only today (see MIN_ABSOLUTE_SCORE).
  */
 export const MIN_QUERY_LEXICAL_COVERAGE = 0.5
 /**
  * Orama BM25 `threshold` parameter (0..1).
  *
- * COUNTERINTUITIVE SEMANTICS — read carefully, this has caused bugs before:
+ * COUNTERINTUITIVE SEMANTICS — this has caused bugs before:
  *
- * - `threshold === 1` (Orama's default): returns ANY document that matches
- *   AT LEAST ONE token of the query. This is the loosest setting, not the
- *   strictest. With natural-language queries like "Who wrote the play Hamlet?",
- *   the stop word "the" matches nearly every document in the corpus.
+ * - `1` (Orama's default): keep anything matching AT LEAST ONE query token.
+ *   This is the LOOSEST setting, not the strictest — stop words such as "the"
+ *   match nearly every document.
+ * - `0`: require ALL query tokens; a single rare or out-of-vocabulary token
+ *   empties the result set. Too strict for retrieval.
+ * - `0 < t < 1`: all full matches plus a `t` fraction of partial matches.
+ *   Lower values are stricter.
  *
- * - `threshold === 0`: requires ALL query tokens to be present. If ANY token
- *   is missing from the index, returns []. Too strict for retrieval — a single
- *   rare token kills the entire query.
+ * Kept at 1.0 because on the 166-chunk corpus with the current tokenizer
+ * (stemming + stopwords) the sweep at 0.3 / 0.5 / 1.0 (conditions D/E/F in
+ * hybrid-benchmark.test.ts) gave identical metrics (nDCG@10 = 0.4156): the
+ * tokenizer already removes stopwords and normalises morphology, making the
+ * threshold redundant. Values below 0.5 had previously eliminated the
+ * `head-shaving` query altogether on the older 104-chunk corpus.
  *
- * - `0 < threshold < 1`: returns full matches (all tokens present) PLUS a
- *   fraction `threshold` of partial matches (some tokens missing). Lower
- *   values are stricter.
- *
- * VALIDATED ON REAL CORPUS (166 chunks, new chunking + tokenizer):
- *
- * Phase 1 threshold sweep (conditions D, E, F in hybrid-benchmark.test.ts)
- * measured nDCG@10 with the new tokenizer (stemming + stopwords) at three
- * threshold values:
- *   - D: threshold 0.5 → nDCG@10 = 0.4156
- *   - E: threshold 1.0 → nDCG@10 = 0.4156  (identical)
- *   - F: threshold 0.3 → nDCG@10 = 0.4156  (identical)
- *
- * All three conditions produce identical metrics. The threshold has NO
- * measurable effect when the tokenizer already handles stopword removal and
- * stemming. We revert to 1.0 (Orama's default) because:
- *   1. It is the simplest, most predictable setting.
- *   2. Values below 0.5 previously caused an "acantilado" that eliminated the
- *      `head-shaving` query from results entirely (observed on the old 104-chunk
- *      corpus without the new tokenizer).
- *   3. With the new tokenizer, the threshold is redundant — the tokenizer
- *      already filters stopwords and normalises morphology.
- *
- * The constant and its semantics are preserved (rather than removed) so that
- * if future data shows a use case for sub-1.0 thresholds (e.g. a different
- * tokenizer or corpus characteristics), it can be reintroduced with evidence.
- *
- * MUST be combined with `stemming: true` and `stopWords` in the tokenizer
- * config — without stopwords, a sub-1.0 threshold has nothing to filter
- * (the axes are coupled).
+ * The constant is preserved so a sub-1.0 threshold can be reintroduced with
+ * evidence. Its effect is coupled to the tokenizer: without `stemming: true`
+ * and `stopWords`, a sub-1.0 threshold has nothing to filter.
  */
 export const ORAMA_LEXICAL_THRESHOLD = 1.0
 
+/** Embedding model: encodes chunks and queries for semantic search. */
 export const EMBEDDING_MODEL_NAME = 'Xenova/all-MiniLM-L6-v2'
-/** User-facing embedding model name and approximate download size (shown in the loading toast). */
+/** Display name and approximate download size, shown in the loading toast. */
 export const EMBEDDING_MODEL_DISPLAY_NAME = 'MiniLM-L6-v2'
 export const EMBEDDING_MODEL_DOWNLOAD_SIZE = '~90 MB'
+/** Vector width of EMBEDDING_MODEL_NAME — index and queries must match it. */
 export const EMBEDDING_DIMENSIONS = 384
 
 /**
- * Cross-encoder model (MS-MARCO MiniLM L-6 v2, quantized int8).
- * Used to rank the top-N hybrid candidates after initial retrieval.
- * Runs in a dedicated Web Worker. Mandatory for search — if the model
- * fails to load, the UI shows an error and allows retry.
+ * Cross-encoder reranker (MS-MARCO MiniLM L-6 v2, int8): scores the top hybrid
+ * candidates after retrieval and provides the abstention signal. Runs in a
+ * dedicated Web Worker and is mandatory — if it fails to load, the UI reports
+ * the error and offers retry (see RERANKER_ABSTENTION_THRESHOLD).
  */
 export const RERANKER_MODEL_NAME = 'Xenova/ms-marco-MiniLM-L-6-v2'
-/** User-facing model name and approximate download size (shown in the loading toast). */
+/** Display name and approximate download size, shown in the loading toast. */
 export const RERANKER_MODEL_DISPLAY_NAME = 'MS-MARCO MiniLM-L-6 (q8)'
 export const RERANKER_MODEL_DOWNLOAD_SIZE = '~23 MB'
 /**
- * Number of hybrid candidates to rerank with the cross-encoder.
- * Larger values improve recall at the cost of latency. 40 is the default
- * validated on the benchmark; tune via RERANK_CANDIDATE_POOL_CROSS_ENCODER
- * if experimentation warrants it.
+ * How many of the lexically reranked candidates the cross-encoder scores (out
+ * of the RERANK_CANDIDATE_POOL retrieved from Orama). Larger improves recall at
+ * the cost of latency; 40 is the benchmark-validated default.
  */
 export const RERANK_CANDIDATES_CROSS_ENCODER = 40
 /**
- * Abstention threshold for the cross-encoder (logit scale).
+ * Cross-encoder abstention threshold, on the model's RAW LOGITS — not sigmoid
+ * probabilities. Unlike Orama's hybrid scores (relative, min-max normalized per
+ * result set, so the leader always reads ≈ 1.0), these are absolute, which is
+ * what makes a fixed cutoff meaningful.
  *
- * The cross-encoder returns raw logits (not sigmoid probabilities). These are
- * absolute scores, unlike Orama's hybrid scores which are relative (min-max
- * normalized within the result set, so the top result always has score ≈ 1.0).
+ * Application: after truncation, if no result reaches this logit value the
+ * whole query abstains and returns [].
  *
- * CALIBRATION HISTORY:
+ * CALIBRATION:
+ *   - Britney Spears corpus (166 chunks; 14 positive, 6 off-topic negative
+ *     queries): positives 1.12 … 9.47 vs negatives -11.06 … -7.29 — an 8.41
+ *     gap, so 0.0 kept every positive and dropped every negative.
+ *   - QASPER (68 chunks from 2 papers; 16 positive, 3 unanswerable): positives
+ *     -5.46 … 7.78 vs unanswerable -5.72 … 0.81 — the ranges overlap, and 0.0
+ *     lost 4/16 positives while letting 2/3 unanswerable through.
  *
- * Original calibration on Britney Spears corpus (166 chunks, 14 positive,
- * 6 artificial negatives like "Who wrote Hamlet?"):
- *   - Positive queries: min = 1.12, max = 9.47
- *   - Negative queries: min = -11.06, max = -7.29
- *   - Gap: +8.41 (perfect separation)
- *   - Threshold 0.0 retained all positives, filtered all negatives
+ * WHY -6.0: below the weakest positive observed in either corpus (-5.46) yet
+ * above the strongest Britney negative (-7.29), so it hides no valid answer and
+ * still rejects off-topic queries. -5.46/-5.5 would fit the current data
+ * slightly better, but the margin between -5.46 and -5.72 is 0.26 logits on 16
+ * positives and 3 negatives — tuning there would repeat the overfitting this
+ * validation exposed. -6.0 leaves a 0.54-point safety margin.
  *
- * Multi-document validation on QASPER (68 chunks from 2 academic papers,
- * 16 positive, 3 unanswerable):
- *   - Positive queries: min = -5.46, max = 7.78, median = 3.72
- *   - Unanswerable queries: min = -5.72, max = 0.81, median = -4.71
- *   - Gap: -6.27 (MASSIVE OVERLAP)
- *   - Threshold 0.0 retained 12/16 positives (lost 4 correct answers) and
- *     filtered only 1/3 unanswerable (let 2 pass). Failed in both directions.
+ * SCOPE LIMIT: detects queries unrelated to the corpus. It does NOT reliably
+ * detect plausible questions the documents cannot answer; that needs
+ * answerability classification or confidence calibration and remains open.
  *
- * WHY -6.0:
- *
- * The threshold -6.0 is below all observed positive logits in both corpora
- * (Britney min 1.12, QASPER min -5.46), so it does NOT hide valid answers.
- * It still filters all 6 artificial negatives from Britney (max -7.29).
- *
- * We deliberately do NOT choose -5.46 or -5.5, even though those would score
- * marginally better on the current data. The gap between the lowest positive
- * (-5.46) and the lowest unanswerable (-5.72) is only 0.26 logit points on
- * a sample of 16 positives and 3 negatives. Tuning to that boundary would
- * repeat the exact overfitting this validation just exposed. The -6.0 value
- * provides a 0.54-point safety margin below the weakest observed positive.
- *
- * LIMITATION:
- *
- * This threshold detects queries with NO relationship to the corpus (completely
- * off-topic questions). It does NOT reliably detect plausible questions that
- * have no answer in the document. That problem remains open and requires a
- * different approach (e.g., answerability classification, confidence calibration).
- *
- * DEGRADATION POLICY:
- *
- * If the cross-encoder model fails to load, the search pipeline does NOT
- * execute — the UI shows an error and a retry button. There is no fallback
- * to lexical-only retrieval: returning results without the cross-encoder
- * would silently surface irrelevant chunks. The cross-encoder is the only
- * validated abstention mechanism in production. The lexical ranker
- * (`src/lib/lexical-ranking.ts`) is used as a pre-filter before
- * cross-encoder ranking, but does not replace it for abstention.
- *
- * LOAD FAILURE POLICY:
- *
- * If the cross-encoder model fails to load, the search pipeline does NOT
- * execute — the UI shows an error and a retry button. There is no fallback
- * to lexical-only retrieval: returning results without the cross-encoder
- * would silently surface irrelevant chunks.
+ * NO-FALLBACK POLICY: if the model fails to load the pipeline does not run —
+ * the UI shows an error with retry. Falling back to lexical-only retrieval
+ * would silently surface irrelevant chunks. The lexical ranker
+ * (`src/lib/lexical-ranking.ts`) pre-filters candidates before the cross-encoder
+ * but never replaces it for abstention.
  */
 export const RERANKER_ABSTENTION_THRESHOLD = -6.0
 
+/** Answer-generation LLM (WebGPU, main thread via @mlc-ai/web-llm). */
 export const LLM_MODEL_ID = 'Llama-3.2-1B-Instruct-q4f16_1-MLC'
-/** User-facing model name and approximate download size (shown in the enable dialog / toast). */
+/** Display name and approximate download size, shown in the enable dialog / toast. */
 export const LLM_MODEL_NAME = 'Llama 3.2 1B'
 export const LLM_MODEL_DOWNLOAD_SIZE = '~880 MB'
+/** Top search results packed into the LLM context. Kept equal to DEFAULT_MAX_RESULTS. */
 export const LLM_CONTEXT_CHUNKS = 10
+/** Cap on generated answer tokens. */
 export const LLM_MAX_TOKENS = 512
 /**
- * Maximum total characters for all context chunks combined sent to the LLM.
- * The model has a 4096-token context window; at ~4 chars/token for plain text,
- * this leaves room for the system prompt, query, and output tokens (LLM_MAX_TOKENS).
+ * Character budget for all context chunks combined (buildContext stops adding
+ * chunks once it is exceeded). Sized so the prompt fits the model's context
+ * window alongside the system prompt, the query, and LLM_MAX_TOKENS of output.
  */
 export const LLM_CONTEXT_BUDGET_CHARS = 10_000
-/** Maximum characters contributed by a single chunk to the LLM context. */
+/** Per-chunk character cap within the LLM context (buildContext truncates each chunk). */
 export const LLM_CONTEXT_CHUNK_MAX_CHARS = 1_500

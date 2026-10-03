@@ -1,7 +1,6 @@
 import { useLayoutEffect, useRef } from 'react'
 import type { SearchResult } from '@/types/search'
 import type { SavedSearchState } from '@/types/search'
-import { ScoreBadge } from './ScoreBadge'
 import { useParams, useLocation, useNavigate } from 'react-router'
 
 interface ResultCardProps {
@@ -86,7 +85,6 @@ export function ResultCard({
               {llmCitationIndex}
             </span>
           )}
-          <ScoreBadge score={result.score} />
         </div>
       </div>
 
