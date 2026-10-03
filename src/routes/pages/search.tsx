@@ -37,6 +37,7 @@ import { toast } from 'sonner'
 
 /** Stable id so the progress toast and its success/error transition target the same toast. */
 const LLM_DOWNLOAD_TOAST_ID = 'llm-model-download'
+const CROSS_ENCODER_DOWNLOAD_TOAST_ID = 'cross-encoder-model-download'
 
 /** Creates model load callbacks for LLM service */
 function getLlmModelCallbacks(): ModelLoadCallbacks {
@@ -118,12 +119,24 @@ export function SearchPage() {
     retry: retrySearchModels,
   } = useSearchModels({
     onLoadStart: () => {
-      // No-op: toast is rendered inline below the SearchBar
+      // Show a progress toast for the cross-encoder only.
+      // The embedding toast is owned by App (useEmbeddingStatus) — do not show or dismiss it here.
+      if (crossEncoderStatus === 'idle' || crossEncoderStatus === 'loading') {
+        toast(<ModelDownloadToast model="cross-encoder" />, {
+          id: CROSS_ENCODER_DOWNLOAD_TOAST_ID,
+          duration: Infinity,
+        })
+      }
     },
     onLoadEnd: () => {
-      // Both models ready — if there was a pending query, auto-submit
+      // Both models ready — dismiss the cross-encoder progress toast.
+      // The embedding toast stays under App/useEmbeddingStatus control.
+      toast.dismiss(CROSS_ENCODER_DOWNLOAD_TOAST_ID)
     },
     onLoadError: (message) => {
+      // Dismiss the cross-encoder progress toast and surface the error as a regular toast.
+      // The embedding toast stays under App/useEmbeddingStatus control.
+      toast.dismiss(CROSS_ENCODER_DOWNLOAD_TOAST_ID)
       toast.error(`Model load failed: ${message}`)
     },
   })

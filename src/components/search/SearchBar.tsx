@@ -192,16 +192,6 @@ export function SearchBar({
         </div>
       </div>
 
-      {searchModelsStatus === 'loading' && (
-        <div className="mt-2 space-y-1 text-sm text-muted-foreground">
-          {embeddingStatusDetailed === 'loading' && (
-            <p>Loading embedding model… Search will be available once all models are ready.</p>
-          )}
-          {crossEncoderStatusDetailed === 'loading' && (
-            <p>Loading cross-encoder model…</p>
-          )}
-        </div>
-      )}
       {searchModelsStatus === 'error' && (
         <div className="mt-2 space-y-1">
           <p className="text-sm text-foreground">

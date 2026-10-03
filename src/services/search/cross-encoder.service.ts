@@ -1,3 +1,4 @@
+import { proxy } from 'comlink'
 import { getRerankerWorker } from '@/infrastructure/worker-pool'
 import type { RerankerLoadProgressCallback } from '@/workers/reranker.worker'
 import type { SearchResult } from '@/types/search'
@@ -18,46 +19,67 @@ import type { SearchResult } from '@/types/search'
  * that updates the Zustand store. The service itself does NOT import from store/.
  */
 
-let loadPromise: Promise<boolean> | null = null
+let loadPromise: Promise<void> | null = null
 let isCrossEncoderLoaded = false
 let crossEncoderLoadFailed = false
+let crossEncoderLoadError: unknown = null
 
 /**
  * Error thrown when the cross-encoder model is not ready or scoring fails.
  * The UI layer should catch this and surface a retry action.
  */
 export class CrossEncoderNotReadyError extends Error {
-  constructor(message: string) {
+  /** The underlying error that caused the failure, if provided */
+  cause?: unknown
+
+  constructor(message: string, options?: { cause?: unknown }) {
     super(message)
     this.name = 'CrossEncoderNotReadyError'
+    if (options?.cause !== undefined) this.cause = options.cause
   }
 }
 
 /**
- * Loads the cross-encoder model. Idempotent: if already loaded, returns
+ * Loads the cross-encoder model. Idempotent: if already loaded, resolves
  * immediately. If a load is in progress, waits for it. If a previous load
- * failed, returns false.
+ * failed, rejects with `CrossEncoderNotReadyError` (call
+ * `resetCrossEncoderLoadState()` before retrying).
  *
  * The caller should pass an onProgress callback that updates the Zustand
  * store (e.g., setCrossEncoderProgress). The service itself does not import store/.
+ *
+ * @throws {CrossEncoderNotReadyError} if the model fails to load
  */
 export async function loadCrossEncoderModel(
   onProgress?: RerankerLoadProgressCallback,
-): Promise<boolean> {
-  if (isCrossEncoderLoaded) return true
-  if (crossEncoderLoadFailed) return false
+): Promise<void> {
+  if (isCrossEncoderLoaded) return
+  if (crossEncoderLoadFailed) {
+    const cause = crossEncoderLoadError
+    const detail = cause instanceof Error ? cause.message : String(cause ?? 'unknown error')
+    throw new CrossEncoderNotReadyError(
+      `Cross-encoder model failed to load: ${detail}`,
+      { cause },
+    )
+  }
   if (loadPromise) return loadPromise
 
   loadPromise = (async () => {
     try {
       const worker = getRerankerWorker()
-      await worker.loadModel(onProgress)
+      // Wrap the callback with Comlink's proxy() so it can cross the
+      // postMessage boundary (plain functions are not cloneable).
+      await worker.loadModel(onProgress ? proxy(onProgress) : undefined)
       isCrossEncoderLoaded = true
-      return true
     } catch (error) {
       console.error('[CrossEncoder] Failed to load model:', error)
       crossEncoderLoadFailed = true
-      return false
+      crossEncoderLoadError = error
+      const detail = error instanceof Error ? error.message : String(error ?? 'unknown error')
+      throw new CrossEncoderNotReadyError(
+        `Cross-encoder model failed to load: ${detail}`,
+        { cause: error },
+      )
     }
   })()
 
@@ -70,16 +92,20 @@ export function isCrossEncoderReady(): boolean {
 }
 
 /**
- * Resets the load state so a failed load can be retried.
+ * Resets the load state so a new load cycle can start (Retry button, tests).
  *
- * After a failed load, `loadCrossEncoderModel` returns `false` immediately without
- * retrying. Calling this clears the failure flag and the cached promise so the
- * next call to `loadCrossEncoderModel` attempts a fresh load.
+ * Clears the loaded flag, the failure flag, the cached error, and the cached
+ * promise, so the next call to `loadCrossEncoderModel` attempts a fresh load
+ * instead of returning early or rejecting with the cached `CrossEncoderNotReadyError`.
+ *
+ * The worker and its internally cached model may stay loaded — `worker.loadModel()`
+ * is idempotent, so the re-load resolves without re-downloading.
  */
 export function resetCrossEncoderLoadState(): void {
   loadPromise = null
+  isCrossEncoderLoaded = false
   crossEncoderLoadFailed = false
-  // isCrossEncoderLoaded stays as-is — if it was true, the model is still usable.
+  crossEncoderLoadError = null
 }
 
 /**

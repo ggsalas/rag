@@ -18,7 +18,7 @@ vi.mock('@/services/embedding/vector-store', () => ({
 vi.mock('./cross-encoder.service', () => ({
   rankWithCrossEncoder: vi.fn((_query, candidates) => Promise.resolve(candidates)),
   isCrossEncoderReady: vi.fn(() => true),
-  loadCrossEncoderModel: vi.fn(() => Promise.resolve(true)),
+  loadCrossEncoderModel: vi.fn(() => Promise.resolve()),
   resetCrossEncoderLoadState: vi.fn(),
 }))
 

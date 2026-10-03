@@ -1,6 +1,5 @@
 import { useEffect, useRef, useCallback } from 'react'
 import { useAppStore } from '@/store/app.store'
-import { initEmbeddingModel } from '@/services/embedding/embedding.service'
 import {
   loadCrossEncoderModel,
   resetCrossEncoderLoadState,
@@ -17,7 +16,7 @@ import type { RerankerLoadProgressCallback } from '@/workers/reranker.worker'
  */
 export type SearchModelsStatus = 'idle' | 'loading' | 'ready' | 'error'
 
-/** Callbacks to notify the consumer about model loading lifecycle */
+/** Callbacks to notify the consumer about cross-encoder loading lifecycle */
 export interface SearchModelsCallbacks {
   onLoadStart: () => void
   onLoadEnd: () => void
@@ -46,16 +45,14 @@ export function combineSearchModelsStatus(
 }
 
 /**
- * Initializes both the embedding model and the cross-encoder in
- * parallel, tracking their progress in the global Zustand store.
+ * Loads and tracks the cross-encoder model, while observing the embedding
+ * model status owned by App/useEmbeddingStatus.
  *
- * Search is considered enabled only when BOTH models are `ready`. While either
- * is `loading`, the UI should show progress. If either enters `error`, the
- * user can call `retry()` to attempt both again.
+ * Search is enabled only when BOTH models are `ready`. The hook never calls
+ * `initEmbeddingModel` — that responsibility belongs to App/useEmbeddingStatus.
  *
- * The hook is idempotent: calling it from multiple components (or on re-render)
- * does not restart already-running loads. Models are loaded on demand when the
- * hook first mounts — typically when entering the search route.
+ * The hook is idempotent: re-renders or StrictMode re-runs do not restart an
+ * already-running cross-encoder load.
  */
 export function useSearchModels(callbacks: SearchModelsCallbacks) {
   const embeddingStatus = useAppStore((s) => s.embeddingStatus)
@@ -69,50 +66,28 @@ export function useSearchModels(callbacks: SearchModelsCallbacks) {
   const callbacksRef = useRef(callbacks)
   callbacksRef.current = callbacks
 
-  // Track whether a load cycle has been started so we don't restart on re-render.
-  const startedRef = useRef(false)
+  // Prevents duplicate cross-encoder starts when the effect re-runs
+  // (e.g. React StrictMode or status transitions).
+  const crossEncoderStartedRef = useRef(false)
 
+  // Start the cross-encoder when its status is `idle` and it hasn't already
+  // been initiated in this load cycle. Embedding status is only observed.
   useEffect(() => {
-    if (startedRef.current) return
-    // Only start if both are idle (fresh mount). If either is already
-    // loading/ready/error, leave it alone — a previous invocation or a retry
-    // is in charge.
-    if (embeddingStatus !== 'idle' || crossEncoderStatus !== 'idle') return
-    startedRef.current = true
+    if (crossEncoderStatus !== 'idle' || crossEncoderStartedRef.current) return
 
-    const { onLoadStart, onLoadEnd, onLoadError } = callbacksRef.current
+    const { onLoadStart, onLoadError } = callbacksRef.current
+
+    // Mark ref BEFORE starting async work so re-runs won't re-initiate.
+    crossEncoderStartedRef.current = true
+
     onLoadStart()
-    setEmbeddingStatus('loading')
-    setEmbeddingProgress(0)
+
     setCrossEncoderStatus('loading')
     setCrossEncoderProgress(0)
-
-    const embeddingPromise = initEmbeddingModel((progress) =>
-      setEmbeddingProgress(Math.round(progress * 100)),
-    )
-      .then(() => {
-        setEmbeddingStatus('ready')
-      })
-      .catch((error) => {
-        console.error('[useSearchModels] Failed to load embedding model:', error)
-        setEmbeddingStatus('error')
-        onLoadError(
-          error instanceof Error ? error.message : 'Failed to load embedding model',
-        )
-      })
-
-    const crossEncoderProgressCallback: RerankerLoadProgressCallback = (progress) =>
+    const progressCallback: RerankerLoadProgressCallback = (progress) =>
       setCrossEncoderProgress(Math.round(progress * 100))
-
-    const crossEncoderPromise = loadCrossEncoderModel(crossEncoderProgressCallback)
-      .then((ok) => {
-        if (ok) {
-          setCrossEncoderStatus('ready')
-        } else {
-          setCrossEncoderStatus('error')
-          onLoadError('Failed to load cross-encoder model')
-        }
-      })
+    loadCrossEncoderModel(progressCallback)
+      .then(() => setCrossEncoderStatus('ready'))
       .catch((error) => {
         console.error('[useSearchModels] Failed to load cross-encoder model:', error)
         setCrossEncoderStatus('error')
@@ -120,39 +95,42 @@ export function useSearchModels(callbacks: SearchModelsCallbacks) {
           error instanceof Error ? error.message : 'Failed to load cross-encoder model',
         )
       })
+  }, [crossEncoderStatus, setCrossEncoderStatus, setCrossEncoderProgress])
 
-    Promise.allSettled([embeddingPromise, crossEncoderPromise]).then((results) => {
-      const allOk = results.every((r) => r.status === 'fulfilled')
-      // Only notify completion if neither callback already fired an error.
-      const currentEmbedding = useAppStore.getState().embeddingStatus
-      const currentCrossEncoder = useAppStore.getState().crossEncoderStatus
-      if (allOk && currentEmbedding !== 'error' && currentCrossEncoder !== 'error') {
-        onLoadEnd()
-      }
-    })
+  // Notify onLoadEnd once both models reach `ready`.
+  useEffect(() => {
+    if (embeddingStatus === 'ready' && crossEncoderStatus === 'ready') {
+      callbacksRef.current.onLoadEnd()
+    }
+  }, [embeddingStatus, crossEncoderStatus])
+
+  const combinedStatus = combineSearchModelsStatus(embeddingStatus, crossEncoderStatus)
+
+  /**
+   * Retries loading failed models.
+   * Always resets the cross-encoder and its state/progress.
+   * If embedding is in error, resets it to idle so App/useEmbeddingStatus
+   * (the owner) re-attempts the load. If embedding is ready/loading, leaves it.
+   */
+  const retry = useCallback(() => {
+    // Always reset cross-encoder
+    resetCrossEncoderLoadState()
+    crossEncoderStartedRef.current = false
+    setCrossEncoderStatus('idle')
+    setCrossEncoderProgress(0)
+
+    // Only reset embedding if it failed — App/useEmbeddingStatus owns it
+    if (embeddingStatus === 'error') {
+      setEmbeddingStatus('idle')
+      setEmbeddingProgress(0)
+    }
   }, [
     embeddingStatus,
-    crossEncoderStatus,
     setEmbeddingStatus,
     setEmbeddingProgress,
     setCrossEncoderStatus,
     setCrossEncoderProgress,
   ])
-
-  const combinedStatus = combineSearchModelsStatus(embeddingStatus, crossEncoderStatus)
-
-  /** Retries loading both models from scratch (resets error state). */
-  const retry = useCallback(() => {
-    // Reset the cross-encoder's internal load-failed flag so loadCrossEncoderModel
-    // attempts a fresh load instead of returning false immediately.
-    resetCrossEncoderLoadState()
-    // Reset Zustand slices so the effect re-triggers.
-    setEmbeddingStatus('idle')
-    setEmbeddingProgress(0)
-    setCrossEncoderStatus('idle')
-    setCrossEncoderProgress(0)
-    startedRef.current = false
-  }, [setEmbeddingStatus, setEmbeddingProgress, setCrossEncoderStatus, setCrossEncoderProgress])
 
   return {
     embeddingStatus,
